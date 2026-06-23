@@ -1651,6 +1651,8 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   <button class="tab" onclick="switchTab('wishlist')">Wishlist</button>
   <button class="tab" onclick="switchTab('community')">Community</button>
   <button onclick="openExportModal()" style="margin-left:auto;background:none;border:0.5px solid var(--border2);border-radius:8px;color:var(--muted);font-family:var(--font);font-size:11px;padding:6px 14px;cursor:pointer;transition:color .15s;white-space:nowrap;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">↓ Export PDF</button>
+  <button onclick="exportBinderBackup()" style="background:none;border:0.5px solid var(--border2);border-radius:8px;color:var(--muted);font-family:var(--font);font-size:11px;padding:6px 14px;cursor:pointer;transition:color .15s;white-space:nowrap;" title="Download a backup of your entire vault" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">⬇ Backup</button>
+  <label style="background:none;border:0.5px solid var(--border2);border-radius:8px;color:var(--muted);font-family:var(--font);font-size:11px;padding:6px 14px;cursor:pointer;transition:color .15s;white-space:nowrap;" title="Restore vault from a backup file" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">⬆ Restore<input type="file" accept=".cvbackup,.json" onchange="importBinderBackup(event)" style="display:none"></label>
 </div>
 
 <div id="tab-collection">
@@ -3012,7 +3014,7 @@ async function shareVault(){
     }
 
     // Copy link to clipboard (non-blocking)
-    const shareUrl = 'https://card-vault-jibril.netlify.app/?vault='+vaultId;
+    const shareUrl = 'https://card-vault-buv.pages.dev/?vault='+vaultId;
     try { await navigator.clipboard.writeText(shareUrl); } catch(e) {}
 
     btn.textContent = isUpdate ? '✓ Updated!' : '✓ Link copied!';
