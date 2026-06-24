@@ -9597,6 +9597,82 @@ function closeVaultViewer(){
 }
 /* ══ END COMMUNITY ══ */
 
+/* ══ ONBOARDING ══ */
+let _obResults = [];
+let _obDebounce = null;
+
+function initOnboarding(){
+  if(localStorage.getItem('card-vault-onboarded')) return;
+  // Only show for truly new users (no collection, no binders)
+  if(collection.length || binders.length){
+    localStorage.setItem('card-vault-onboarded','1');
+    return;
+  }
+  const modal = document.getElementById('onboarding-modal');
+  modal.style.display = 'flex';
+}
+
+function obNext(step){
+  [1,2,3].forEach(n => {
+    document.getElementById('ob-step-'+n).style.display = n===step ? '' : 'none';
+    document.getElementById('ob-dot-'+n).style.background = n===step ? 'var(--accent)' : 'var(--border2)';
+  });
+  if(step === 2) setTimeout(()=>document.getElementById('ob-search-input')?.focus(), 100);
+}
+
+function obDismiss(){
+  document.getElementById('onboarding-modal').style.display = 'none';
+  localStorage.setItem('card-vault-onboarded','1');
+}
+
+async function obSearchInput(q){
+  clearTimeout(_obDebounce);
+  const el = document.getElementById('ob-results');
+  if(!q || q.trim().length < 2){ el.innerHTML = ''; _obResults = []; return; }
+  _obDebounce = setTimeout(async () => {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px;">Searching…</div>';
+    try {
+      const {name, number} = parseQuery(q.trim());
+      let apiQ = `name:"${name}*"`;
+      if(number) apiQ += ` number:${number}`;
+      const res = await fetch(`${API}/cards?q=${encodeURIComponent(apiQ)}&pageSize=8&orderBy=-cardmarket.prices.averageSellPrice`);
+      const data = await res.json();
+      _obResults = data.data || [];
+      if(!_obResults.length){ el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px;">No results found</div>'; return; }
+      el.innerHTML = _obResults.map((c,i) => `
+        <div onclick="obAddCard(${i})" style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;cursor:pointer;background:var(--surface2);border:0.5px solid var(--border2);transition:border-color .12s;"
+          onmouseenter="this.style.borderColor='rgba(167,139,250,.4)'" onmouseleave="this.style.borderColor='var(--border2)'">
+          <img src="${c.images?.small||''}" style="width:36px;height:50px;object-fit:cover;border-radius:4px;flex-shrink:0;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}</div>
+            <div style="font-size:11px;color:var(--muted);">${c.set?.name||''} · #${c.number||'?'}</div>
+          </div>
+          <div style="font-size:13px;font-weight:600;font-family:Space Mono,monospace;color:var(--accent);flex-shrink:0;">${getPrice(c)?'£'+getPrice(c).toFixed(2):'—'}</div>
+        </div>`).join('');
+    } catch(e){ el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px;">Search failed</div>'; }
+  }, 320);
+}
+
+function obAddCard(i){
+  const card = _obResults[i];
+  if(!card) return;
+  collection.unshift({...card, price:getPrice(card), addedAt:Date.now(), instanceId:iid()});
+  removeFromWishlistIfOwned(card.id);
+  save(); updateStats(); renderGrid();
+  const el = document.getElementById('ob-results');
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;background:rgba(61,184,124,.1);border:0.5px solid rgba(61,184,124,.3);">
+    <img src="${card.images?.small||''}" style="width:36px;height:50px;object-fit:cover;border-radius:4px;">
+    <div>
+      <div style="font-size:13px;font-weight:500;color:#3db87c;">✓ Added to your vault!</div>
+      <div style="font-size:11px;color:var(--muted);">${card.name} · ${card.set?.name||''}</div>
+    </div>
+  </div>`;
+  setTimeout(() => obNext(3), 1000);
+}
+
+document.addEventListener('DOMContentLoaded', initOnboarding);
+/* ══ END ONBOARDING ══ */
+
 /* ══ HOLO PRESETS ══ */
 const HOLO_PRESETS=[
   {id:'rainbow',label:'Rainbow',dot:'linear-gradient(135deg,#f0f,#0ff)',
@@ -9840,6 +9916,81 @@ window.addEventListener('scroll', () => {
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button id="app-dialog-cancel" style="padding:8px 18px;border-radius:8px;border:0.5px solid var(--border2);background:transparent;color:var(--muted);font-family:var(--font);font-size:13px;cursor:pointer;display:none;">Cancel</button>
       <button id="app-dialog-ok" style="padding:8px 20px;border-radius:8px;border:2px solid #3db87c;background:#3db87c;color:#fff;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;-webkit-text-fill-color:#fff;letter-spacing:.04em;">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Onboarding modal -->
+<div id="onboarding-modal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.92);backdrop-filter:blur(16px);align-items:center;justify-content:center;padding:1.5rem;">
+  <div style="width:100%;max-width:480px;position:relative;">
+
+    <!-- Step 1: Welcome -->
+    <div id="ob-step-1" class="ob-step">
+      <div style="text-align:center;margin-bottom:2rem;">
+        <div style="font-size:48px;margin-bottom:1rem;">◈</div>
+        <div style="font-size:28px;font-weight:700;letter-spacing:.04em;background:linear-gradient(90deg,#a855f7,#6366f1,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:.5rem;">CARD VAULT</div>
+        <div style="font-size:14px;color:var(--muted);line-height:1.6;">Your personal Pokémon TCG collection tracker.<br>Add cards, build binders, and share your vault with the world.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:2rem;">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface);border:0.5px solid var(--border2);border-radius:10px;">
+          <span style="font-size:20px;flex-shrink:0;">🃏</span>
+          <div><div style="font-size:13px;font-weight:500;color:var(--text);">Track your collection</div><div style="font-size:11px;color:var(--muted);margin-top:2px;">Search any card and add it instantly with live prices</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface);border:0.5px solid var(--border2);border-radius:10px;">
+          <span style="font-size:20px;flex-shrink:0;">📒</span>
+          <div><div style="font-size:13px;font-weight:500;color:var(--text);">Build custom binders</div><div style="font-size:11px;color:var(--muted);margin-top:2px;">Organise your cards into beautiful digital binders</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface);border:0.5px solid var(--border2);border-radius:10px;">
+          <span style="font-size:20px;flex-shrink:0;">🌐</span>
+          <div><div style="font-size:13px;font-weight:500;color:var(--text);">Share with the community</div><div style="font-size:11px;color:var(--muted);margin-top:2px;">Share your vault and explore other collectors' collections</div></div>
+        </div>
+      </div>
+      <button onclick="obNext(2)" style="width:100%;padding:14px;border-radius:10px;border:none;background:linear-gradient(90deg,#a855f7,#6366f1);color:#fff;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.02em;">Get started →</button>
+      <div style="text-align:center;margin-top:12px;"><button onclick="obDismiss()" style="background:none;border:none;color:var(--muted);font-family:var(--font);font-size:12px;cursor:pointer;">Skip intro</button></div>
+    </div>
+
+    <!-- Step 2: Add first card -->
+    <div id="ob-step-2" class="ob-step" style="display:none;">
+      <div style="text-align:center;margin-bottom:1.5rem;">
+        <div style="font-size:36px;margin-bottom:.75rem;">🔍</div>
+        <div style="font-size:20px;font-weight:600;color:var(--text);margin-bottom:.5rem;">Add your first card</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.6;">Search by name — try a favourite like<br><span style="color:var(--accent);">Charizard</span>, <span style="color:var(--accent);">Pikachu</span>, or <span style="color:var(--accent);">Umbreon</span></div>
+      </div>
+      <div style="background:var(--surface);border:0.5px solid var(--border2);border-radius:12px;padding:1.25rem;margin-bottom:1.5rem;">
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <input id="ob-search-input" type="text" placeholder="Search for a card..." autocomplete="off"
+            style="flex:1;padding:10px 14px;background:var(--surface2);border:0.5px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;"
+            oninput="obSearchInput(this.value)"
+            onkeydown="if(event.key==='Enter'&&_obResults.length)obAddCard(0)">
+          <button onclick="obSearchInput(document.getElementById('ob-search-input').value)" style="padding:10px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-family:var(--font);font-size:13px;cursor:pointer;">Search</button>
+        </div>
+        <div id="ob-results" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;"></div>
+      </div>
+      <button onclick="obNext(3)" style="width:100%;padding:12px;border-radius:10px;border:0.5px solid var(--border2);background:transparent;color:var(--muted);font-family:var(--font);font-size:13px;cursor:pointer;">Skip for now →</button>
+    </div>
+
+    <!-- Step 3: All done -->
+    <div id="ob-step-3" class="ob-step" style="display:none;">
+      <div style="text-align:center;margin-bottom:2rem;">
+        <div style="font-size:48px;margin-bottom:1rem;">✨</div>
+        <div style="font-size:22px;font-weight:600;color:var(--text);margin-bottom:.75rem;">You're all set!</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.8;">
+          A few things worth knowing:<br>
+          <span style="color:var(--text);">Browse Gallery</span> — explore every Pokémon TCG set<br>
+          <span style="color:var(--text);">Binders</span> — build custom card binders with your collection<br>
+          <span style="color:var(--text);">Community</span> — see top vaults and most collected cards<br>
+          <span style="color:var(--text);">↑ Share</span> — share your vault with anyone via a link<br>
+          <span style="color:var(--text);">⬇ Backup</span> — download a backup so you never lose your data
+        </div>
+      </div>
+      <button onclick="obDismiss()" style="width:100%;padding:14px;border-radius:10px;border:none;background:linear-gradient(90deg,#3db87c,#22c55e);color:#fff;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;">Start collecting →</button>
+    </div>
+
+    <!-- Progress dots -->
+    <div style="display:flex;justify-content:center;gap:6px;margin-top:1.5rem;" id="ob-dots">
+      <div id="ob-dot-1" style="width:6px;height:6px;border-radius:50%;background:var(--accent);transition:background .2s;"></div>
+      <div id="ob-dot-2" style="width:6px;height:6px;border-radius:50%;background:var(--border2);transition:background .2s;"></div>
+      <div id="ob-dot-3" style="width:6px;height:6px;border-radius:50%;background:var(--border2);transition:background .2s;"></div>
     </div>
   </div>
 </div>
