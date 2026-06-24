@@ -9061,8 +9061,8 @@ async function openSetCompletion(setId){
       </div>
       <div id="sc-owned-section">
         <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">In your vault · ${cards.length} card${cards.length!==1?'s':''}</div>
-        <div class="card-grid" style="margin-bottom:2rem;">${cards.map(c=>`
-          <div class="pcard" onclick="openViewer('${c.instanceId||c.id}',true)" style="cursor:pointer;" onmousemove="holoMove(event,this)" onmouseleave="holoReset(this)">
+        <div class="card-grid" style="margin-bottom:2rem;">${(window._scOwnedCards=cards,cards).map((c,_i)=>`
+          <div class="pcard" onclick="openViewerCard(window._scOwnedCards[${_i}])" style="cursor:pointer;" onmousemove="holoMove(event,this)" onmouseleave="holoReset(this)">
             <div class="pcard-inner">
               <img class="pcard-img" src="${c.images?.small||''}" alt="${c.name}" loading="lazy">
               <div class="holo-rainbow"></div><div class="holo-shimmer"></div><div class="holo-glare"></div>
@@ -9121,21 +9121,37 @@ async function fetchMissingCards(setId, setInfo, ownedNumbers, printedTotal){
     // Store missing cards for wishlist add
     window._scMissingCards = missing;
 
-    gridEl.innerHTML = missing.map(c => `
-      <div class="pcard" onclick="openViewerCard(window._scMissingCards.find(x=>x.id==='${c.id}'))" style="cursor:pointer;opacity:.75;" onmousemove="holoMove(event,this)" onmouseleave="holoReset(this)">
-        <div class="pcard-inner">
+    gridEl.innerHTML = missing.map((c,_mi) => {
+      const alreadyWishlisted = !!wishlist.find(w=>w.id===c.id);
+      return `<div class="pcard" style="cursor:pointer;opacity:.8;position:relative;" onmousemove="holoMove(event,this)" onmouseleave="holoReset(this)">
+        <div class="pcard-inner" onclick="openViewerCard(window._scMissingCards[${_mi}])">
           <img class="pcard-img" src="${c.images?.small||''}" alt="${c.name}" loading="lazy" onerror="this.style.opacity='.2'">
           <div class="holo-rainbow"></div><div class="holo-shimmer"></div><div class="holo-glare"></div>
         </div>
         <div class="card-info">
           <div class="card-name-text">${c.name}</div>
           <div class="card-set-text">#${c.number||'?'}</div>
-          <div class="card-price-row"><span class="card-price-val">${getPrice(c)?'£'+getPrice(c).toFixed(2):'—'}</span></div>
+          <div class="card-price-row" style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+            <span class="card-price-val">${getPrice(c)?'£'+getPrice(c).toFixed(2):'—'}</span>
+            <button onclick="wishlistMissingCard(${_mi},this)" ${alreadyWishlisted?'disabled':''} style="padding:2px 8px;border-radius:6px;border:0.5px solid rgba(167,139,250,${alreadyWishlisted?'.2':'.4'});background:rgba(167,139,250,${alreadyWishlisted?'.05':'.1'});color:${alreadyWishlisted?'var(--muted)':'#c4b0ef'};font-family:var(--font);font-size:10px;cursor:${alreadyWishlisted?'default':'pointer'};white-space:nowrap;flex-shrink:0;">${alreadyWishlisted?'✓ Wishlisted':'♡'}</button>
+          </div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   } catch(e){
     statusEl.textContent = 'Could not load missing cards';
   }
+}
+
+function wishlistMissingCard(idx, btn){
+  const c = window._scMissingCards?.[idx];
+  if(!c || wishlist.find(w=>w.id===c.id)) return;
+  wishlist.push({...c, addedAt: Date.now()});
+  saveWishlist();
+  btn.textContent = '✓ Wishlisted';
+  btn.disabled = true;
+  btn.style.color = 'var(--muted)';
+  btn.style.borderColor = 'rgba(167,139,250,.2)';
 }
 
 function addMissingToWishlist(setId){
