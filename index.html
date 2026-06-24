@@ -8110,18 +8110,20 @@ function openResizeModalForNewUpload(){
     const tgtH = _resizeSpanH * 3;
     const tgtRatio = tgtW / tgtH;
     const wrap = document.getElementById('resize-wrap');
-    const maxH = Math.min(window.innerHeight * 0.55, 480);
-    const maxW = wrap.clientWidth || 500;
+    const modalInner2 = document.querySelector('.resize-modal-inner');
+    const maxW = Math.min(wrap.clientWidth || 500, modalInner2 ? modalInner2.clientWidth - 2 : 500);
+    const maxH = Math.min(window.innerHeight * 0.45, 480);
     let displayW, displayH;
     if(maxW / tgtRatio <= maxH){
       displayW = maxW; displayH = maxW / tgtRatio;
     } else {
       displayH = maxH; displayW = maxH * tgtRatio;
     }
+    if(displayW > maxW){ displayW = maxW; displayH = displayW / tgtRatio; }
     const canvas = document.getElementById('resize-canvas');
     canvas.width = displayW; canvas.height = displayH;
     canvas.style.width = displayW + 'px'; canvas.style.height = displayH + 'px';
-    wrap.style.width = displayW + 'px';
+    wrap.style.width = '100%';
 
     // Show full image initially
     const scaleToFitX = displayW / img.width;
@@ -8432,8 +8434,10 @@ function openResizeModal(idx){
     const tgtH = _resizeSpanH * 3;
     const tgtRatio = tgtW / tgtH;
     const wrap = document.getElementById('resize-wrap');
-    const maxH = Math.min(window.innerHeight * 0.55, 480);
-    const maxW = wrap.clientWidth || 500;
+    const modalInner = document.querySelector('.resize-modal-inner');
+    // Cap to the modal inner width (accounts for padding on mobile)
+    const maxW = Math.min(wrap.clientWidth || 500, modalInner ? modalInner.clientWidth - 2 : 500);
+    const maxH = Math.min(window.innerHeight * 0.45, 480);
     let displayW, displayH;
     if(maxW / tgtRatio <= maxH){
       displayW = maxW;
@@ -8442,12 +8446,14 @@ function openResizeModal(idx){
       displayH = maxH;
       displayW = maxH * tgtRatio;
     }
+    // Never exceed available width
+    if(displayW > maxW){ displayW = maxW; displayH = displayW / tgtRatio; }
     const canvas = document.getElementById('resize-canvas');
     canvas.width  = displayW;
     canvas.height = displayH;
     canvas.style.width  = displayW + 'px';
     canvas.style.height = displayH + 'px';
-    wrap.style.width = displayW + 'px';
+    wrap.style.width = '100%'; // always fill modal width, don't overflow
 
     // Initial fit: show the whole image (fit-to-canvas), user zooms in to crop
     const scaleToFitX = displayW / img.width;
