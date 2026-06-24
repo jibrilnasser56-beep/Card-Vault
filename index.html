@@ -1215,9 +1215,10 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   position:relative;width:100%;overflow:hidden;border-radius:10px;
   background:#000;cursor:grab;user-select:none;
   border:1px solid var(--border2);
+  box-sizing:border-box;
 }
 .resize-canvas-wrap:active{cursor:grabbing;}
-#resize-canvas{display:block;width:100%;height:auto;pointer-events:none;}
+#resize-canvas{display:block;max-width:100%;height:auto;pointer-events:none;}
 .resize-overlay{
   position:absolute;inset:0;pointer-events:none;
   border:2px solid rgba(139,104,212,.8);border-radius:10px;
@@ -6742,11 +6743,14 @@ function renderPocket(slot, globalIdx){
   const isMerged = spanW > 1 || spanH > 1;
   if(owned){
     const notInVault = !isCustomCard(slot) && !inVault;
+    const isTouchDevice = 'ontouchstart' in window;
     return`<div class="pocket owned${isMerged?' span-anchor':''}${notInVault?' not-in-vault':''}" data-idx="${globalIdx}" ${drag} ${over} ${spanStyle}
       onclick="pocketClick(${globalIdx})"
       oncontextmenu="pocketCtxMenu(event,${globalIdx})"
-      onmouseenter="pocketMouseEnter(event,${globalIdx})"
-      onmouseleave="pocketMouseLeave(${globalIdx})">
+      ${isTouchDevice
+        ? `ontouchend="pocketTouchEnd(event,${globalIdx})"`
+        : `onmouseenter="pocketMouseEnter(event,${globalIdx})" onmouseleave="pocketMouseLeave(${globalIdx})"`
+      }>
       <div class="pocket-inner"></div>
       <div class="pocket-intent-ring"></div>
       <img class="pocket-card" src="${imgSrc}" alt="${label}" loading="lazy" draggable="false">
@@ -6777,6 +6781,32 @@ const LIFT_DELAY = 2000;
 let _liftTimer = null;
 let _liftedIdx = null;
 let _actionBarIdx = null;
+
+function pocketTouchEnd(e, idx){
+  // On touch devices, a tap lifts the card and shows the action bar immediately
+  // If already lifted, dismiss (second tap = close)
+  if(_liftedIdx === idx){
+    lowerPocket(idx);
+    hideActionBar();
+    return;
+  }
+  // If dragging, don't lift
+  if(_customDragActive) return;
+  e.preventDefault(); // prevent ghost click
+  if(_liftedIdx !== null){ lowerPocket(_liftedIdx); }
+  liftPocket(idx);
+}
+
+// Tap outside a lifted pocket dismisses it on mobile
+document.addEventListener('touchend', e => {
+  if(_liftedIdx === null) return;
+  const bar = document.getElementById('pocket-action-bar');
+  const lifted = document.querySelector('.pocket.lifted');
+  if(!bar.contains(e.target) && (!lifted || !lifted.contains(e.target))){
+    lowerPocket(_liftedIdx);
+    hideActionBar();
+  }
+}, {passive:true});
 
 function pocketMouseEnter(e, idx){
   if(_binderVaultSelectMode) return; // no lift in vault-select mode
