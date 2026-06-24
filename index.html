@@ -6316,8 +6316,8 @@ function playBinderOpenAnimation(binder, clickedEl, onComplete){
   overlay.classList.add('running');
   overlay.offsetHeight; // force reflow
 
-  // ── PHASE 1: Dim fades in (0–200ms) ──
-  dim.style.transition = 'opacity 200ms ease';
+  // ── PHASE 1: Dim snaps in immediately to hide shelf ──
+  dim.style.transition = 'none';
   dim.style.opacity    = '1';
 
   // ── PHASE 2: Cover translates + scales to centre (100–650ms) ──
