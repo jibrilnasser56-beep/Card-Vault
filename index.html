@@ -1598,7 +1598,8 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .pills-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;align-self:center;white-space:nowrap;margin-right:2px;}
 
 @media(max-width:700px){
-  body{padding:1rem;}
+  body{padding:1rem;overflow-x:hidden;}
+  html{overflow-x:hidden;}
   .vault-header{flex-direction:column;align-items:flex-start;gap:1rem;}
   .viewer-layout{flex-direction:column;align-items:center;}
   .stage-scene,.card-3d-wrap{width:200px;height:280px;}
@@ -1607,6 +1608,65 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   .binder-spine{width:100%;height:24px;flex-direction:row;justify-content:space-around;padding:0 20px;}
   .binder-ring{width:18px;height:18px;}
   .pocket-grid.g12{grid-template-columns:repeat(3,1fr);}
+
+  /* Tabs: scrollable single row, hide utility buttons */
+  .tabs{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-wrap:nowrap;gap:0;padding-bottom:0;}
+  .tabs::-webkit-scrollbar{display:none;}
+  .tab{flex-shrink:0;font-size:12px;padding:10px 14px;white-space:nowrap;}
+  /* Hide Export PDF, Backup, Restore from tab bar on mobile — accessible from header area */
+  .tabs > button:not(.tab){display:none;}
+  .tabs > label:not(.tab){display:none;}
+
+  /* Header: show backup/restore as icon buttons, compact layout */
+  .vault-header > div:last-child{width:100%;display:flex;align-items:center;gap:8px;}
+  .stats-bar{flex:1;}
+  .mobile-backup-btn{display:flex!important;}
+
+  /* Binder toolbar: stack into two rows */
+  .binder-toolbar{flex-direction:column;align-items:stretch;gap:8px;}
+  .binder-toolbar-left{flex-wrap:wrap;gap:6px;}
+  .binder-toolbar-left .toolbar-btn{flex:1;min-width:120px;text-align:center;font-size:12px;}
+  .binder-toolbar > div:last-child{justify-content:flex-end;}
+
+  /* Binder nav bar */
+  .binder-nav{flex-wrap:wrap;gap:6px;font-size:12px;}
+
+  /* Viewer on mobile */
+  .viewer-inner{padding:1rem .5rem;gap:1rem;}
+  .vi-meta-grid{grid-template-columns:1fr 1fr;}
+
+  /* Community vault rows */
+  .set-completion-row{gap:10px;}
+}
+
+@media(max-width:480px){
+  body{padding:.75rem;}
+  .card-grid{grid-template-columns:repeat(3,1fr);gap:8px;}
+  .pcard{border-radius:8px;}
+
+  /* Header compact */
+  .vault-title{font-size:18px;}
+  .vault-sub{font-size:10px;}
+
+  /* Binder: use single page view, larger pockets */
+  .pocket-grid.g9{grid-template-columns:repeat(3,1fr);}
+  .pocket-grid.g12{grid-template-columns:repeat(3,1fr);}
+
+  /* Hide binder name label truncated */
+  #binder-name-label{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  /* Viewer: full screen feel */
+  .viewer-backdrop{padding:0;}
+  .viewer-inner{padding:.75rem .5rem;flex-direction:column;align-items:center;max-width:100%;}
+  .stage-scene,.card-3d-wrap{width:160px;height:224px;}
+  .viewer-info{width:100%;}
+  .vi-price{font-size:24px;}
+
+  /* Suggestions dropdown full width */
+  #suggestions{left:0;right:0;width:100%;}
+
+  /* Add basket bar */
+  #add-basket-bar{left:1rem;right:1rem;transform:none;white-space:normal;flex-wrap:wrap;}
 }
 
 @keyframes card-appear{from{opacity:0;transform:translateY(12px) scale(.97);}to{opacity:1;transform:translateY(0) scale(1);}}
@@ -1648,6 +1708,9 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       style="padding:9px 16px;background:linear-gradient(90deg,#a855f7,#6366f1,#3b82f6);border:none;border-radius:8px;color:#fff;font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;box-shadow:0 0 16px rgba(167,139,250,.2);flex-shrink:0;">
       ↑ Share
     </button>
+    <!-- Mobile-only backup/restore icons -->
+    <button onclick="exportBinderBackup()" title="Backup" style="display:none;padding:8px;border-radius:8px;border:0.5px solid var(--border2);background:transparent;color:var(--muted);font-size:14px;cursor:pointer;flex-shrink:0;" class="mobile-backup-btn">⬇</button>
+    <label title="Restore" style="display:none;padding:8px;border-radius:8px;border:0.5px solid var(--border2);background:transparent;color:var(--muted);font-size:14px;cursor:pointer;flex-shrink:0;" class="mobile-backup-btn">⬆<input type="file" accept=".cvbackup,.json" onchange="importBinderBackup(event)" style="display:none"></label>
   </div>
 </header>
 
