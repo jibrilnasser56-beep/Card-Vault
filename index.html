@@ -9603,11 +9603,6 @@ let _obDebounce = null;
 
 function initOnboarding(){
   if(localStorage.getItem('card-vault-onboarded')) return;
-  // Only show for truly new users (no collection, no binders)
-  if(collection.length || binders.length){
-    localStorage.setItem('card-vault-onboarded','1');
-    return;
-  }
   const modal = document.getElementById('onboarding-modal');
   modal.style.display = 'flex';
 }
