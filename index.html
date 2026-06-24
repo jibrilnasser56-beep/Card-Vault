@@ -2194,8 +2194,18 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       <canvas id="resize-canvas"></canvas>
       <div class="resize-overlay"></div>
     </div>
+    <!-- Zoom controls -->
+    <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+      <button onclick="rzZoom(-0.12)" style="width:32px;height:32px;border-radius:8px;border:0.5px solid var(--border2);background:var(--surface);color:var(--text);font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;line-height:1;">−</button>
+      <input type="range" id="resize-zoom-slider" min="10" max="400" step="1" value="100"
+        oninput="rzSetZoom(this.value/100)"
+        style="flex:1;accent-color:var(--accent);cursor:pointer;">
+      <button onclick="rzZoom(0.12)" style="width:32px;height:32px;border-radius:8px;border:0.5px solid var(--border2);background:var(--surface);color:var(--text);font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;line-height:1;">+</button>
+      <span id="resize-zoom-pct" style="font-size:11px;color:var(--muted);min-width:36px;text-align:right;font-family:Space Mono,monospace;">100%</span>
+      <button onclick="rzReset()" style="padding:6px 12px;border-radius:8px;border:0.5px solid var(--border2);background:var(--surface);color:var(--muted);font-family:var(--font);font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Reset</button>
+    </div>
     <div class="resize-actions">
-      <span class="resize-hint">Drag to pan · Scroll to zoom</span>
+      <span class="resize-hint">Drag to pan · Scroll or use slider to zoom</span>
       <button class="resize-undo" id="resize-undo-btn" onclick="undoResize()" style="display:none">↩ Undo</button>
       <button class="resize-cancel" onclick="closeResizeModal(true)">Close</button>
       <button class="resize-confirm" onclick="confirmResize()">Apply</button>
@@ -8415,6 +8425,46 @@ function drawResizeCanvas(){
     _resizeImg.width * _rz.scale,
     _resizeImg.height * _rz.scale
   );
+  // Sync slider
+  const pct = Math.round(_rz.scale * 100);
+  const slider = document.getElementById('resize-zoom-slider');
+  const label  = document.getElementById('resize-zoom-pct');
+  if(slider) slider.value = Math.min(400, Math.max(10, pct));
+  if(label)  label.textContent = pct + '%';
+}
+
+function rzZoom(delta){
+  const canvas = document.getElementById('resize-canvas');
+  if(!canvas || !_resizeImg) return;
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const factor = 1 + delta;
+  _rz.x = cx - (cx - _rz.x) * factor;
+  _rz.y = cy - (cy - _rz.y) * factor;
+  _rz.scale = Math.max(0.1, Math.min(10, _rz.scale * factor));
+  drawResizeCanvas();
+}
+
+function rzSetZoom(newScale){
+  const canvas = document.getElementById('resize-canvas');
+  if(!canvas || !_resizeImg) return;
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const factor = newScale / _rz.scale;
+  _rz.x = cx - (cx - _rz.x) * factor;
+  _rz.y = cy - (cy - _rz.y) * factor;
+  _rz.scale = Math.max(0.1, Math.min(10, newScale));
+  drawResizeCanvas();
+}
+
+function rzReset(){
+  if(!_resizeImg) return;
+  const canvas = document.getElementById('resize-canvas');
+  // Fit image to canvas maintaining aspect ratio (same as initial fit)
+  const scaleW = canvas.width  / _resizeImg.width;
+  const scaleH = canvas.height / _resizeImg.height;
+  _rz.scale = Math.max(scaleW, scaleH);
+  _rz.x = (canvas.width  - _resizeImg.width  * _rz.scale) / 2;
+  _rz.y = (canvas.height - _resizeImg.height * _rz.scale) / 2;
+  drawResizeCanvas();
 }
 
 function closeResizeModal(cancelled=false){
