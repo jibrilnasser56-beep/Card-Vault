@@ -122,6 +122,11 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .set-card-bar-wrap{flex:1;height:6px;background:var(--border2);border-radius:999px;overflow:hidden;}
 .set-card-bar{height:100%;background:linear-gradient(90deg,var(--accent),#c4b0ef);border-radius:999px;transition:width .3s;}
 .set-card-pct{font-size:10px;color:var(--muted);white-space:nowrap;}
+.set-completion-row{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--surface);border:0.5px solid var(--border2);border-radius:10px;cursor:pointer;transition:border-color .15s,background .15s;}
+.set-completion-row:hover{border-color:rgba(167,139,250,.4);background:var(--surface2);}
+.set-completion-bar-wrap{flex:1;height:5px;background:rgba(255,255,255,.07);border-radius:999px;overflow:hidden;min-width:80px;}
+.set-completion-bar{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),#6366f1);transition:width .4s ease;}
+.set-completion-bar.complete{background:linear-gradient(90deg,#3db87c,#22c55e);}
 
 /* Owned card overlay */
 /* Unowned cards in gallery are greyscale */
@@ -1688,6 +1693,25 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     </div>
   </div>
 
+  <!-- Cards / Sets toggle -->
+  <div style="display:flex;gap:0;border-bottom:0.5px solid var(--border2);margin-bottom:1.25rem;">
+    <button id="cview-cards-btn" onclick="switchCollectionView('cards')"
+      style="padding:7px 18px;background:transparent;border:none;border-bottom:2px solid var(--accent);color:var(--text);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;">
+      Cards
+    </button>
+    <button id="cview-sets-btn" onclick="switchCollectionView('sets')"
+      style="padding:7px 18px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--font);font-size:13px;cursor:pointer;">
+      Sets
+    </button>
+  </div>
+
+  <!-- Sets panel -->
+  <div id="cview-sets-panel" style="display:none;">
+    <div id="collection-sets-grid" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="text-align:center;padding:3rem;color:var(--muted);font-size:13px;">No sets yet — add some cards first</div>
+    </div>
+  </div>
+
   <div id="filter-row" style="display:none;margin-bottom:1.25rem;">
     <!-- Row 1: type pills -->
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;">
@@ -1732,6 +1756,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       <button id="batch-price-btn" onclick="toggleBatchPriceMode()" style="padding:4px 12px;border-radius:6px;border:0.5px solid #3db87c;background:rgba(61,184,124,.15);color:#3db87c;font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;margin-left:auto;">✎ Edit prices</button>
     </div>
   </div>
+  <div id="cview-cards-panel">
   <div class="card-grid" id="card-grid">
     <div class="empty-state">
       <div class="empty-state-icon">◈</div>
@@ -1739,6 +1764,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       <p>Search for a card above to add it, or head to the Browse Gallery tab to explore sets</p>
       <button class="empty-cta" onclick="switchTab('gallery')">Browse Gallery →</button>
     </div>
+  </div>
   </div>
 </div>
 
@@ -8910,7 +8936,224 @@ document.getElementById('bsm-input').addEventListener('input',e=>{clearTimeout(b
 document.getElementById('binder-search-modal').addEventListener('click',e=>{if(e.target===document.getElementById('binder-search-modal'))closeBinderSearch();});
 document.getElementById('new-binder-modal').addEventListener('click',e=>{if(e.target===document.getElementById('new-binder-modal'))closeNewBinderModal();});
 
-/* ══ COMMUNITY ══ */
+/* ══ SET COMPLETION ══ */
+let _collectionView = 'cards'; // 'cards' | 'sets'
+
+function switchCollectionView(v){
+  _collectionView = v;
+  document.getElementById('cview-cards-btn').style.borderBottomColor = v==='cards' ? 'var(--accent)' : 'transparent';
+  document.getElementById('cview-sets-btn').style.borderBottomColor  = v==='sets'  ? 'var(--accent)' : 'transparent';
+  document.getElementById('cview-cards-btn').style.color = v==='cards' ? 'var(--text)' : 'var(--muted)';
+  document.getElementById('cview-sets-btn').style.color  = v==='sets'  ? 'var(--text)' : 'var(--muted)';
+  document.getElementById('cview-cards-panel').style.display = v==='cards' ? '' : 'none';
+  document.getElementById('cview-sets-panel').style.display  = v==='sets'  ? '' : 'none';
+  document.getElementById('filter-row').style.display = v==='cards' && collection.length ? 'block' : 'none';
+  if(v === 'sets') renderCollectionSets();
+}
+
+function renderCollectionSets(){
+  const el = document.getElementById('collection-sets-grid');
+  if(!collection.length){
+    el.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--muted);font-size:13px;">No cards yet — add some cards first</div>';
+    return;
+  }
+
+  // Group cards by set
+  const setMap = new Map();
+  collection.forEach(c => {
+    const sid = c.set?.id;
+    if(!sid) return;
+    if(!setMap.has(sid)){
+      setMap.set(sid, {
+        id: sid,
+        name: c.set?.name || sid,
+        series: c.set?.series || '',
+        logo: c.set?.images?.logo || '',
+        printedTotal: c.set?.printedTotal || c.set?.total || 0,
+        ownedNumbers: new Set(),
+        cards: []
+      });
+    }
+    const entry = setMap.get(sid);
+    if(c.number) entry.ownedNumbers.add(c.number);
+    entry.cards.push(c);
+    // Keep the best logo and total we've seen
+    if(!entry.logo && c.set?.images?.logo) entry.logo = c.set.images.logo;
+    if(!entry.printedTotal && (c.set?.printedTotal || c.set?.total))
+      entry.printedTotal = c.set?.printedTotal || c.set?.total || 0;
+  });
+
+  // Sort by completion % desc, then name
+  const sets = [...setMap.values()].sort((a,b) => {
+    const pctA = a.printedTotal ? a.ownedNumbers.size / a.printedTotal : 0;
+    const pctB = b.printedTotal ? b.ownedNumbers.size / b.printedTotal : 0;
+    return pctB - pctA || a.name.localeCompare(b.name);
+  });
+
+  el.innerHTML = sets.map(s => {
+    const owned = s.ownedNumbers.size;
+    const total = s.printedTotal;
+    const pct = total ? Math.min(100, Math.round(owned / total * 100)) : 0;
+    const complete = total && owned >= total;
+    return `<div class="set-completion-row" onclick="openSetCompletion('${s.id}')">
+      ${s.logo
+        ? `<img src="${s.logo}" style="height:28px;max-width:64px;object-fit:contain;flex-shrink:0;" onerror="this.style.display='none'">`
+        : `<div style="width:64px;font-size:11px;color:var(--muted);flex-shrink:0;text-align:center;">${s.name}</div>`}
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">
+          <span style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.name}</span>
+          ${s.series ? `<span style="font-size:11px;color:var(--muted);flex-shrink:0;">${s.series}</span>` : ''}
+          ${complete ? `<span style="font-size:10px;padding:1px 7px;border-radius:999px;background:rgba(61,184,124,.15);color:#3db87c;border:0.5px solid rgba(61,184,124,.35);flex-shrink:0;">✓ Complete</span>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="set-completion-bar-wrap">
+            <div class="set-completion-bar${complete?' complete':''}" style="width:${pct}%"></div>
+          </div>
+          <span style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;">${owned}${total ? ' / '+total : ' cards'}</span>
+          <span style="font-size:11px;font-weight:600;font-family:Space Mono,monospace;color:${complete?'#3db87c':'var(--accent)'};flex-shrink:0;">${pct}%</span>
+        </div>
+      </div>
+      <div style="color:var(--muted);font-size:16px;padding-left:4px;flex-shrink:0;">›</div>
+    </div>`;
+  }).join('');
+}
+
+// Set completion detail modal
+let _scSet = null; // current set being viewed
+
+async function openSetCompletion(setId){
+  // Find set data from collection
+  const cards = collection.filter(c => c.set?.id === setId);
+  if(!cards.length) return;
+  const setInfo = cards[0].set;
+  const printedTotal = setInfo?.printedTotal || setInfo?.total || 0;
+  const ownedNumbers = new Set(cards.map(c => c.number).filter(Boolean));
+
+  // Build or reuse modal
+  let modal = document.getElementById('set-completion-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'set-completion-modal';
+    modal.className = 'set-missing-modal';
+    document.body.appendChild(modal);
+  }
+
+  const pct = printedTotal ? Math.min(100, Math.round(ownedNumbers.size / printedTotal * 100)) : 0;
+  const complete = printedTotal && ownedNumbers.size >= printedTotal;
+
+  modal.innerHTML = `
+    <div style="max-width:900px;margin:0 auto;padding:2rem 1rem;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.5rem;flex-wrap:wrap;">
+        <button onclick="document.getElementById('set-completion-modal').classList.remove('open');document.body.style.overflow='';"
+          style="padding:7px 16px;border-radius:8px;border:0.5px solid var(--border2);background:transparent;color:var(--muted);font-family:var(--font);font-size:13px;cursor:pointer;">← Back</button>
+        ${setInfo?.images?.logo ? `<img src="${setInfo.images.logo}" style="height:28px;object-fit:contain;">` : ''}
+        <div style="font-size:18px;font-weight:600;color:var(--text);">${setInfo?.name||setId}</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:12px;">
+          <span style="font-size:22px;font-weight:700;font-family:Space Mono,monospace;color:${complete?'#3db87c':'var(--accent)'};">${pct}%</span>
+          <span style="font-size:13px;color:var(--muted);">${ownedNumbers.size}${printedTotal?' / '+printedTotal:''} cards</span>
+          ${complete ? `<span style="font-size:11px;padding:2px 10px;border-radius:999px;background:rgba(61,184,124,.15);color:#3db87c;border:0.5px solid rgba(61,184,124,.35);">✓ Complete</span>` : ''}
+        </div>
+      </div>
+      <div style="height:6px;background:rgba(255,255,255,.07);border-radius:999px;margin-bottom:1.5rem;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;border-radius:999px;background:${complete?'linear-gradient(90deg,#3db87c,#22c55e)':'linear-gradient(90deg,var(--accent),#6366f1)'};transition:width .4s;"></div>
+      </div>
+      <div id="sc-owned-section">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">In your vault · ${cards.length} card${cards.length!==1?'s':''}</div>
+        <div class="card-grid" style="margin-bottom:2rem;">${cards.map(c=>`
+          <div class="pcard" onclick="openViewer('${c.instanceId||c.id}',true)" style="cursor:pointer;" onmousemove="holoMove(event,this)" onmouseleave="holoReset(this)">
+            <div class="pcard-inner">
+              <img class="pcard-img" src="${c.images?.small||''}" alt="${c.name}" loading="lazy">
+              <div class="holo-rainbow"></div><div class="holo-shimmer"></div><div class="holo-glare"></div>
+            </div>
+            <div class="card-info">
+              <div class="card-name-text">${c.name}</div>
+              <div class="card-set-text">#${c.number||'?'}</div>
+              <div class="card-price-row"><span class="card-price-val">£${(c.price||0).toFixed(2)}</span></div>
+            </div>
+          </div>`).join('')}</div>
+      </div>
+      <div id="sc-missing-section">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;">Missing cards</div>
+          <div id="sc-missing-status" style="font-size:12px;color:var(--muted);">${printedTotal ? 'Loading...' : 'Set total unknown — no missing card data'}</div>
+          <button id="sc-wishlist-btn" onclick="addMissingToWishlist('${setId}')" style="display:none;margin-left:auto;padding:6px 14px;border-radius:8px;border:0.5px solid rgba(167,139,250,.4);background:rgba(167,139,250,.1);color:#c4b0ef;font-family:var(--font);font-size:12px;cursor:pointer;">♡ Add all missing to wishlist</button>
+        </div>
+        <div id="sc-missing-grid" class="card-grid"></div>
+      </div>
+    </div>`;
+
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  // Fetch missing cards if we have a total
+  if(printedTotal && !complete){
+    await fetchMissingCards(setId, setInfo, ownedNumbers, printedTotal);
+  } else if(complete){
+    document.getElementById('sc-missing-status').textContent = 'You own every card in this set!';
+  } else {
+    document.getElementById('sc-missing-status').textContent = '';
+  }
+}
+
+async function fetchMissingCards(setId, setInfo, ownedNumbers, printedTotal){
+  const statusEl = document.getElementById('sc-missing-status');
+  const gridEl   = document.getElementById('sc-missing-grid');
+  const btnEl    = document.getElementById('sc-wishlist-btn');
+  if(!statusEl || !gridEl) return;
+
+  try {
+    const res = await fetch(`${API}/cards?q=set.id:${setId}&pageSize=250&orderBy=number`);
+    if(!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    const allCards = data.data || [];
+    const missing = allCards.filter(c => !ownedNumbers.has(c.number));
+
+    if(!missing.length){
+      statusEl.textContent = 'You own every card in this set!';
+      return;
+    }
+
+    statusEl.textContent = `${missing.length} missing`;
+    if(missing.length) btnEl.style.display = '';
+
+    // Store missing cards for wishlist add
+    window._scMissingCards = missing;
+
+    gridEl.innerHTML = missing.map(c => `
+      <div class="pcard" onclick="openViewerCard(window._scMissingCards.find(x=>x.id==='${c.id}'))" style="cursor:pointer;opacity:.75;" onmousemove="holoMove(event,this)" onmouseleave="holoReset(this)">
+        <div class="pcard-inner">
+          <img class="pcard-img" src="${c.images?.small||''}" alt="${c.name}" loading="lazy" onerror="this.style.opacity='.2'">
+          <div class="holo-rainbow"></div><div class="holo-shimmer"></div><div class="holo-glare"></div>
+        </div>
+        <div class="card-info">
+          <div class="card-name-text">${c.name}</div>
+          <div class="card-set-text">#${c.number||'?'}</div>
+          <div class="card-price-row"><span class="card-price-val">${getPrice(c)?'£'+getPrice(c).toFixed(2):'—'}</span></div>
+        </div>
+      </div>`).join('');
+  } catch(e){
+    statusEl.textContent = 'Could not load missing cards';
+  }
+}
+
+function addMissingToWishlist(setId){
+  const missing = window._scMissingCards || [];
+  if(!missing.length) return;
+  let added = 0;
+  missing.forEach(c => {
+    if(!wishlist.find(w => w.id === c.id)){
+      wishlist.push({...c, addedAt: Date.now()});
+      added++;
+    }
+  });
+  saveWishlist();
+  showToast(`♡ Added ${added} missing card${added!==1?'s':''} to wishlist`);
+  document.getElementById('sc-wishlist-btn').textContent = `✓ ${added} added to wishlist`;
+  document.getElementById('sc-wishlist-btn').disabled = true;
+}
+/* ══ END SET COMPLETION ══ */
+
+
 let _communityLoaded = false;
 let _communityTab = 'vaults';
 let _vaultViewerCards = []; // full card list for current vault
