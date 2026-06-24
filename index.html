@@ -6782,12 +6782,16 @@ let _liftTimer = null;
 let _liftedIdx = null;
 let _actionBarIdx = null;
 
+let _suppressNextPocketClick = false;
+
 function pocketTouchEnd(e, idx){
   // On touch devices, a tap lifts the card and shows the action bar immediately
   // If already lifted, dismiss (second tap = close)
   if(_liftedIdx === idx){
     lowerPocket(idx);
     hideActionBar();
+    _suppressNextPocketClick = true;
+    setTimeout(()=>{ _suppressNextPocketClick = false; }, 300);
     return;
   }
   // If dragging, don't lift
@@ -6795,6 +6799,8 @@ function pocketTouchEnd(e, idx){
   e.preventDefault(); // prevent ghost click
   if(_liftedIdx !== null){ lowerPocket(_liftedIdx); }
   liftPocket(idx);
+  _suppressNextPocketClick = true;
+  setTimeout(()=>{ _suppressNextPocketClick = false; }, 300);
 }
 
 // Tap outside a lifted pocket dismisses it on mobile
@@ -7009,6 +7015,7 @@ function isCustomCard(slot){
 }
 
 function pocketClick(idx){
+  if(_suppressNextPocketClick) return; // touch already handled this interaction
   // In vault-select mode, clicks toggle vault selection
   if(_binderVaultSelectMode){
     const slot = activeBinder?.slots[idx];
@@ -8661,7 +8668,7 @@ function undoResize(){
   window.addEventListener('mouseup', () => { _rz.dragging = false; });
 
   // Touch pan
-  let _lastTouchX = 0, _lastTouchY = 0, _lastDist = 0;
+  let _lastTouchX = 0, _lastTouchY = 0, _lastDist = 0, _lastPinchMidX = 0, _lastPinchMidY = 0;
   wrap.addEventListener('touchstart', e => {
     if(e.touches.length === 1){
       _lastTouchX = e.touches[0].clientX;
@@ -8671,8 +8678,12 @@ function undoResize(){
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
       );
+      // Track midpoint for zoom-towards-centre
+      _lastPinchMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      _lastPinchMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
     }
     e.preventDefault();
+    e.stopPropagation();
   }, {passive:false});
   wrap.addEventListener('touchmove', e => {
     if(e.touches.length === 1){
@@ -8686,17 +8697,27 @@ function undoResize(){
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
       );
-      const delta = dist / _lastDist;
-      _rz.scale *= delta;
-      _rz.scale = Math.max(0.1, Math.min(10, _rz.scale));
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const rect = wrap.getBoundingClientRect();
+      const cx = midX - rect.left;
+      const cy = midY - rect.top;
+      const factor = dist / _lastDist;
+      _rz.x = cx - (cx - _rz.x) * factor;
+      _rz.y = cy - (cy - _rz.y) * factor;
+      _rz.scale = Math.max(0.1, Math.min(10, _rz.scale * factor));
       _lastDist = dist;
+      _lastPinchMidX = midX;
+      _lastPinchMidY = midY;
     }
     drawResizeCanvas();
     e.preventDefault();
+    e.stopPropagation();
   }, {passive:false});
 
-  // Scroll to zoom
+  // Scroll to zoom (desktop only)
   wrap.addEventListener('wheel', e => {
+    if('ontouchstart' in window) return;
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.04 : 0.96;
     // Zoom towards mouse position
