@@ -1668,12 +1668,31 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   /* Hide binder name label truncated */
   #binder-name-label{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
-  /* Viewer: full screen feel */
-  .viewer-backdrop{padding:0;}
-  .viewer-inner{padding:.75rem .5rem;flex-direction:column;align-items:center;max-width:100%;}
-  .stage-scene,.card-3d-wrap{width:160px;height:224px;}
+  /* 3D Viewer — scrollable, no cutoff from browser chrome */
+  .viewer-backdrop{
+    padding:0;
+    align-items:flex-start;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .viewer-inner{
+    padding:3.5rem .75rem 2rem;
+    flex-direction:column;
+    align-items:center;
+    max-width:100%;
+    min-height:100svh;
+    box-sizing:border-box;
+  }
+  .stage-scene,.card-3d-wrap{width:200px;height:280px;}
   .viewer-info{width:100%;}
+  .viewer-close-x{top:.75rem;right:.75rem;}
   .vi-price{font-size:24px;}
+
+  /* Resize modal — compact on mobile */
+  #resize-modal{padding:.5rem;}
+  .resize-modal-inner{padding:.875rem;border-radius:12px;overflow-y:auto;max-height:95svh;}
+  .resize-modal-title{font-size:13px;margin-bottom:.5rem;}
+  #resize-canvas{max-height:35vh;}
 
   /* Suggestions dropdown full width */
   #suggestions{left:0;right:0;width:100%;}
