@@ -8143,43 +8143,14 @@ function openResizeModalForNewUpload(){
   const img = new Image();
   img.onload = () => {
     _resizeImg = img;
-    // Use the image's own aspect ratio so it always fills the canvas edge to edge
-    const tgtRatio = img.width / img.height;
-    const wrap = document.getElementById('resize-wrap');
-    const modalInner2 = document.querySelector('.resize-modal-inner');
-    const maxW = Math.min(wrap.clientWidth || 500, modalInner2 ? modalInner2.clientWidth - 2 : 500);
-    const maxH = Math.min(window.innerHeight * 0.45, 480);
-    let displayW, displayH;
-    if(maxW / tgtRatio <= maxH){
-      displayW = maxW; displayH = maxW / tgtRatio;
-    } else {
-      displayH = maxH; displayW = maxH * tgtRatio;
-    }
-    if(displayW > maxW){ displayW = maxW; displayH = displayW / tgtRatio; }
-    const canvas = document.getElementById('resize-canvas');
-    canvas.width = displayW; canvas.height = displayH;
-    canvas.style.width = displayW + 'px'; canvas.style.height = displayH + 'px';
-    wrap.style.width = '100%';
-
-    // Show full image initially
-    const scaleToFitX = displayW / img.width;
-    const scaleToFitY = displayH / img.height;
-    _rz.scale = Math.min(scaleToFitX, scaleToFitY);
-    _rz.x = (displayW - img.width  * _rz.scale) / 2;
-    _rz.y = (displayH - img.height * _rz.scale) / 2;
-
-    drawResizeCanvas();
-    // Sync slider to actual initial scale
-    const initPct2 = Math.round(_rz.scale * 100);
-    const slider2 = document.getElementById('resize-zoom-slider');
-    const label2  = document.getElementById('resize-zoom-pct');
-    if(slider2){ slider2.min = Math.max(1, Math.round(initPct2 * 0.5)); slider2.max = Math.round(initPct2 * 8); slider2.value = initPct2; }
-    if(label2)  label2.textContent = initPct2 + '%';
     document.getElementById('resize-undo-btn').style.display = 'none';
     _resizePreviousDataUrl = null;
-    // Change Apply button to "Add image"
     document.querySelector('.resize-confirm').textContent = 'Add image';
+    // Open modal first so layout is available for measurement
     document.getElementById('resize-modal').classList.add('open');
+    requestAnimationFrame(() => {
+      initResizeCanvas(img);
+    });
   };
   img.src = _pendingOriginalDataUrl;
 }
@@ -8507,9 +8478,49 @@ function openResizeModal(idx){
     if(label)  label.textContent = initPct + '%';
     document.getElementById('resize-undo-btn').style.display = 'none';
     _resizePreviousDataUrl = null;
+    // Open modal first so layout is available for measurement
     document.getElementById('resize-modal').classList.add('open');
+    requestAnimationFrame(() => {
+      initResizeCanvas(img);
+    });
   };
   img.src = _resizeOriginalUrl;
+}
+
+function initResizeCanvas(img){
+  const wrap = document.getElementById('resize-wrap');
+  const modalInner = document.querySelector('.resize-modal-inner');
+  const tgtRatio = img.width / img.height;
+  const maxW = Math.min(
+    wrap.offsetWidth || window.innerWidth - 32,
+    modalInner ? modalInner.offsetWidth - 2 : window.innerWidth - 32
+  );
+  const maxH = Math.min(window.innerHeight * 0.45, 480);
+  let displayW = maxW, displayH = maxW / tgtRatio;
+  if(displayH > maxH){ displayH = maxH; displayW = maxH * tgtRatio; }
+  if(displayW > maxW){ displayW = maxW; displayH = displayW / tgtRatio; }
+  displayW = Math.floor(displayW);
+  displayH = Math.floor(displayH);
+  const canvas = document.getElementById('resize-canvas');
+  canvas.width  = displayW;
+  canvas.height = displayH;
+  canvas.style.width  = displayW + 'px';
+  canvas.style.height = displayH + 'px';
+  wrap.style.width  = '100%';
+  wrap.style.height = displayH + 'px';
+  // Fit image to canvas
+  const scaleX = displayW / img.width;
+  const scaleY = displayH / img.height;
+  _rz.scale = Math.max(scaleX, scaleY); // cover (fill), not contain
+  _rz.x = (displayW - img.width  * _rz.scale) / 2;
+  _rz.y = (displayH - img.height * _rz.scale) / 2;
+  drawResizeCanvas();
+  // Sync slider
+  const initPct = Math.round(_rz.scale * 100);
+  const slider = document.getElementById('resize-zoom-slider');
+  const label  = document.getElementById('resize-zoom-pct');
+  if(slider){ slider.min = Math.max(1, Math.round(initPct * 0.5)); slider.max = Math.round(initPct * 8); slider.value = initPct; }
+  if(label)  label.textContent = initPct + '%';
 }
 
 function drawResizeCanvas(){
