@@ -8508,8 +8508,10 @@ function initResizeCanvas(img){
   canvas.height = displayH;
   canvas.style.width  = displayW + 'px';
   canvas.style.height = displayH + 'px';
-  wrap.style.width  = '100%';
+  // Centre the canvas in the wrap for portrait slots; fill full width for landscape
+  wrap.style.width  = displayW + 'px';
   wrap.style.height = displayH + 'px';
+  wrap.style.margin = '0 auto'; // centre in modal if narrower than modal
   // Cover-fill: image fills the slot shape, cropping as needed
   const scaleX = displayW / img.width;
   const scaleY = displayH / img.height;
