@@ -6271,9 +6271,11 @@ function playBinderOpenAnimation(binder, clickedEl, onComplete){
     : {left:window.innerWidth/2-60, top:window.innerHeight/2-80, width:120, height:160};
 
   // Target: cover fills most of the viewport, centred
+  // Use a book-like aspect ratio (two pages side by side) not the shelf thumbnail ratio
   const vw = window.innerWidth, vh = window.innerHeight;
-  const targetH = Math.min(vh * 0.72, 560);
-  const targetW = targetH * (srcRect.width / srcRect.height);
+  const targetH = Math.min(vh * 0.78, 620);
+  const halfW   = Math.min(Math.floor(vw * 0.42), 480);
+  const targetW = halfW; // width of ONE page (cover = one page during fly-in)
   const targetL = (vw - targetW) / 2;
   const targetT = (vh - targetH) / 2;
 
@@ -6281,6 +6283,15 @@ function playBinderOpenAnimation(binder, clickedEl, onComplete){
   const scaleX = targetW / srcRect.width;
   const scaleY = targetH / srcRect.height;
   const scale  = (scaleX + scaleY) / 2;
+
+  // Set book halves to exactly match calculated dimensions
+  const bopHalves = document.querySelectorAll('.bop-half');
+  bopHalves.forEach(h => {
+    h.style.width  = halfW + 'px';
+    h.style.height = targetH + 'px';
+  });
+  const bopSpine = document.querySelector('.bop-spine');
+  if(bopSpine) bopSpine.style.height = targetH + 'px';
 
   // Cover starts at exact shelf position (fixed coords)
   cover.style.cssText = `
@@ -8088,6 +8099,12 @@ function openResizeModalForNewUpload(){
     _rz.y = (displayH - img.height * _rz.scale) / 2;
 
     drawResizeCanvas();
+    // Sync slider to actual initial scale
+    const initPct2 = Math.round(_rz.scale * 100);
+    const slider2 = document.getElementById('resize-zoom-slider');
+    const label2  = document.getElementById('resize-zoom-pct');
+    if(slider2){ slider2.min = Math.max(1, Math.round(initPct2 * 0.5)); slider2.max = Math.round(initPct2 * 8); slider2.value = initPct2; }
+    if(label2)  label2.textContent = initPct2 + '%';
     document.getElementById('resize-undo-btn').style.display = 'none';
     _resizePreviousDataUrl = null;
     // Change Apply button to "Add image"
