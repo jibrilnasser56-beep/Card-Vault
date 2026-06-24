@@ -1605,7 +1605,6 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   .viewer-layout{flex-direction:column;align-items:center;}
   .stage-scene,.card-3d-wrap{width:200px;height:280px;}
   .card-grid{grid-template-columns:repeat(auto-fill,minmax(128px,1fr));}
-  .binder-book{flex-direction:column;}
   .binder-spine{width:100%;height:24px;flex-direction:row;justify-content:space-around;padding:0 20px;}
   .binder-ring{width:18px;height:18px;}
   .pocket-grid.g12{grid-template-columns:repeat(3,1fr);}
@@ -1649,9 +1648,22 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   .vault-title{font-size:18px;}
   .vault-sub{font-size:10px;}
 
-  /* Binder: use single page view, larger pockets */
+  /* Binder: single-page layout on mobile */
+  .binder-book{flex-direction:row;} /* keep horizontal */
+  .binder-spine{width:12px;padding:0;flex-direction:column;justify-content:space-around;}
+  .binder-ring{width:10px;height:10px;}
+  .binder-pages{flex-direction:column;}
+  /* Hide right page on mobile — single page view */
+  .binder-page.right{display:none;}
+  .binder-page.left{flex:1;padding:16px 12px;min-height:0;}
   .pocket-grid.g9{grid-template-columns:repeat(3,1fr);}
   .pocket-grid.g12{grid-template-columns:repeat(3,1fr);}
+  .pocket-grid.g4{grid-template-columns:repeat(2,1fr);}
+
+  /* Binder animation: fit to mobile screen */
+  .bop-half.right{display:none;}
+  .bop-half.left{width:80vw!important;max-width:340px!important;}
+  .bop-spine{display:none;}
 
   /* Hide binder name label truncated */
   #binder-name-label{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
