@@ -8490,15 +8490,17 @@ function openResizeModal(idx){
 function initResizeCanvas(img){
   const wrap = document.getElementById('resize-wrap');
   const modalInner = document.querySelector('.resize-modal-inner');
-  const tgtRatio = img.width / img.height;
+  // Canvas shape matches the slot (e.g. 1×2 tall merge = portrait 2:6 ratio)
+  // Single slot = 2:3 (standard card), merged slots scale accordingly
+  const slotRatio = (_resizeSpanW * 2) / (_resizeSpanH * 3);
   const maxW = Math.min(
     wrap.offsetWidth || window.innerWidth - 32,
     modalInner ? modalInner.offsetWidth - 2 : window.innerWidth - 32
   );
   const maxH = Math.min(window.innerHeight * 0.45, 480);
-  let displayW = maxW, displayH = maxW / tgtRatio;
-  if(displayH > maxH){ displayH = maxH; displayW = maxH * tgtRatio; }
-  if(displayW > maxW){ displayW = maxW; displayH = displayW / tgtRatio; }
+  let displayW = maxW, displayH = maxW / slotRatio;
+  if(displayH > maxH){ displayH = maxH; displayW = maxH * slotRatio; }
+  if(displayW > maxW){ displayW = maxW; displayH = displayW / slotRatio; }
   displayW = Math.floor(displayW);
   displayH = Math.floor(displayH);
   const canvas = document.getElementById('resize-canvas');
@@ -8508,10 +8510,10 @@ function initResizeCanvas(img){
   canvas.style.height = displayH + 'px';
   wrap.style.width  = '100%';
   wrap.style.height = displayH + 'px';
-  // Fit image to canvas
+  // Cover-fill: image fills the slot shape, cropping as needed
   const scaleX = displayW / img.width;
   const scaleY = displayH / img.height;
-  _rz.scale = Math.max(scaleX, scaleY); // cover (fill), not contain
+  _rz.scale = Math.max(scaleX, scaleY);
   _rz.x = (displayW - img.width  * _rz.scale) / 2;
   _rz.y = (displayH - img.height * _rz.scale) / 2;
   drawResizeCanvas();
