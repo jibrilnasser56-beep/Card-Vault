@@ -2238,7 +2238,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       <button onclick="rzReset()" style="padding:6px 12px;border-radius:8px;border:0.5px solid var(--border2);background:var(--surface);color:var(--muted);font-family:var(--font);font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Reset</button>
     </div>
     <div class="resize-actions">
-      <span class="resize-hint">Drag to pan · Scroll or use slider to zoom</span>
+      <span class="resize-hint">Drag to pan · <span id="resize-zoom-hint">Scroll or use slider to zoom</span></span>
       <button class="resize-undo" id="resize-undo-btn" onclick="undoResize()" style="display:none">↩ Undo</button>
       <button class="resize-cancel" onclick="closeResizeModal(true)">Close</button>
       <button class="resize-confirm" onclick="confirmResize()">Apply</button>
@@ -8143,9 +8143,8 @@ function openResizeModalForNewUpload(){
   const img = new Image();
   img.onload = () => {
     _resizeImg = img;
-    const tgtW = _resizeSpanW * 2;
-    const tgtH = _resizeSpanH * 3;
-    const tgtRatio = tgtW / tgtH;
+    // Use the image's own aspect ratio so it always fills the canvas edge to edge
+    const tgtRatio = img.width / img.height;
     const wrap = document.getElementById('resize-wrap');
     const modalInner2 = document.querySelector('.resize-modal-inner');
     const maxW = Math.min(wrap.clientWidth || 500, modalInner2 ? modalInner2.clientWidth - 2 : 500);
@@ -8467,9 +8466,8 @@ function openResizeModal(idx){
   img.onload = () => {
     _resizeImg = img;
     // Set canvas to slot aspect ratio, capped so it always fits in the modal
-    const tgtW = _resizeSpanW * 2;
-    const tgtH = _resizeSpanH * 3;
-    const tgtRatio = tgtW / tgtH;
+    // Use the image's own aspect ratio so it always fills the canvas edge to edge
+    const tgtRatio = img.width / img.height;
     const wrap = document.getElementById('resize-wrap');
     const modalInner = document.querySelector('.resize-modal-inner');
     // Cap to the modal inner width (accounts for padding on mobile)
@@ -9758,7 +9756,11 @@ function obAddCard(i){
   setTimeout(() => obNext(3), 1000);
 }
 
-document.addEventListener('DOMContentLoaded', initOnboarding);
+document.addEventListener('DOMContentLoaded', ()=>{
+  initOnboarding();
+  const hint = document.getElementById('resize-zoom-hint');
+  if(hint && 'ontouchstart' in window) hint.textContent = 'Pinch or use slider to zoom';
+});
 /* ══ END ONBOARDING ══ */
 
 /* ══ HOLO PRESETS ══ */
