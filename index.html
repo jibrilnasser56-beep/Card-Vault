@@ -127,6 +127,8 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .set-completion-bar-wrap{flex:1;height:5px;background:rgba(255,255,255,.07);border-radius:999px;overflow:hidden;min-width:80px;}
 .set-completion-bar{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),#6366f1);transition:width .4s ease;}
 .set-completion-bar.complete{background:linear-gradient(90deg,#3db87c,#22c55e);}
+.set-missing-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:850;overflow-y:auto;backdrop-filter:blur(6px);}
+.set-missing-modal.open{display:block;}
 
 /* Owned card overlay */
 /* Unowned cards in gallery are greyscale */
