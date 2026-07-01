@@ -1856,7 +1856,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     <!-- Row 3: rarity filter (populated dynamically) -->
     <div id="collection-rarity-row" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
       <span class="filter-label">Rarity</span>
-      <button class="rar-pill active" data-col-rarity="" onclick="setCollectionRarity('')">All</button>
+      <button class="fpill active" data-col-rarity="" onclick="setCollectionRarity('')">All</button>
     </div>
   </div>
   <div id="cview-cards-panel">
@@ -3490,7 +3490,7 @@ document.querySelectorAll('.fpill').forEach(btn=>btn.addEventListener('click',()
 
 function setCollectionRarity(r){
   activeRarity = r;
-  document.querySelectorAll('#collection-rarity-row .rar-pill').forEach(b=>b.classList.toggle('active', b.dataset.colRarity===r));
+  document.querySelectorAll('#collection-rarity-row .fpill').forEach(b=>b.classList.toggle('active', b.dataset.colRarity===r));
   renderGrid();
 }
 
@@ -3498,9 +3498,8 @@ function updateCollectionRarityPills(){
   const rarities = [...new Set(collection.map(c=>c.rarity).filter(Boolean))].sort();
   const row = document.getElementById('collection-rarity-row');
   if(!row) return;
-  row.innerHTML = '<span class="filter-label">Rarity</span><button class="rar-pill'+(activeRarity===''?' active':'')+'" data-col-rarity="" onclick="setCollectionRarity(\'\')">All</button>' +
-    rarities.map(r=>`<button class="rar-pill${activeRarity===r?' active':''}" data-col-rarity="${r}" onclick="setCollectionRarity('${r.replace(/'/g,"\\'")}')">
-      ${r.replace(/\s*\([^)]+\)/,'').trim()}</button>`).join('');
+  row.innerHTML = '<span class="filter-label">Rarity</span><button class="fpill'+(activeRarity===''?' active':'')+'" data-col-rarity="" onclick="setCollectionRarity(\'\')">All</button>' +
+    rarities.map(r=>`<button class="fpill${activeRarity===r?' active':''}" data-col-rarity="${r}" onclick="setCollectionRarity('${r.replace(/'/g,"\\'")}')">${r.replace(/\s*\([^)]+\)/,'').trim()}</button>`).join('');
 }
 document.getElementById('sort-select').addEventListener('change',e=>{activeSort=e.target.value;renderGrid();});
 
@@ -3772,7 +3771,10 @@ async function openCnSetView(setId){
   document.getElementById('gal-completion-label').textContent = 'Loading...';
   document.getElementById('gal-completion-bar').style.width = '0%';
   const rarPillsZh = document.getElementById('gal-rarity-pills');
-  if(rarPillsZh) rarPillsZh.innerHTML = '<button class="rar-pill active" data-rarity="" onclick="setTcgcRarity(\'\')">All</button>';
+  if(rarPillsZh) rarPillsZh.innerHTML = '<span class="pills-label">Rarity</span><button class="rar-pill active" data-rarity="" onclick="setTcgcRarity(\'\')" >All</button>';
+  // Hide type pills for CN sets — TCGcollector doesn\'t provide supertype data
+  const typePillsCn = document.getElementById('gal-type-pills');
+  if(typePillsCn) typePillsCn.style.display = 'none';
   const g = document.getElementById('gal-grid');
   g.innerHTML = Array(12).fill('<div><div class="skel-card"></div><div class="skel-info"></div></div>').join('');
 
@@ -3812,7 +3814,7 @@ async function openCnSetView(setId){
     });
     const rarContainer = document.getElementById('gal-rarity-pills');
     if(rarContainer){
-      rarContainer.innerHTML = '<button class="rar-pill active" data-rarity="" onclick="setTcgcRarity(\'\')">All</button>';
+      rarContainer.innerHTML = '<span class="pills-label">Rarity</span><button class="rar-pill active" data-rarity="" onclick="setTcgcRarity(\'\')">All</button>';
       rawRaritiesCn.forEach(r => {
         const btn = document.createElement('button');
         btn.className = 'rar-pill'; btn.dataset.rarity = r;
@@ -4066,13 +4068,26 @@ function setGalType(type){
   document.querySelectorAll('#gal-type-pills .fpill').forEach(b => {
     b.classList.toggle('active', b.dataset.galtype === type);
   });
-  if(_activeSetId) loadGallery(1);
+  // For CN/JA sets, filter client-side; for EN, re-fetch
+  if(_activeSetLang && _activeSetLang !== 'en'){
+    const rarity = document.querySelector('#gal-rarity-pills .rar-pill.active')?.dataset?.rarity || '';
+    renderTcgcGrid(rarity);
+  } else if(_activeSetId) {
+    loadGallery(1);
+  }
 }
 
 function backToSetGrid(){
   _activeSetId = null;
+  _activeSetLang = 'en';
   document.getElementById('gal-card-browser').style.display = 'none';
   document.getElementById('gal-set-browser').style.display = '';
+  // Restore type pills
+  const typePills = document.getElementById('gal-type-pills');
+  if(typePills) typePills.style.display = '';
+  // Restore default rarity pills
+  const rarPills = document.getElementById('gal-rarity-pills');
+  if(rarPills) rarPills.innerHTML = '<span class="pills-label">Rarity</span><button class="rar-pill active" data-rarity="" onclick="setGalRarity(\'\')">All</button>';
   if(_galLang !== 'en'){
     // Reload the set grid for the current language
     if(_galLang === 'zh-cn') loadCnSets();
@@ -5449,7 +5464,10 @@ async function openTcgdexSetView(setId, lang){
   document.getElementById('gal-completion-label').textContent = 'Loading...';
   document.getElementById('gal-completion-bar').style.width = '0%';
   const rarPillsJa = document.getElementById('gal-rarity-pills');
-  if(rarPillsJa) rarPillsJa.innerHTML = '<button class="rar-pill active" data-rarity="" onclick="setTcgcRarity(\'\')">All</button><span style="font-size:11px;color:var(--muted);padding:2px 6px;">Loading...</span>';
+  if(rarPillsJa) rarPillsJa.innerHTML = '<span class="pills-label">Rarity</span><button class="rar-pill active" data-rarity="" onclick="setTcgcRarity(\'\')">All</button><span style="font-size:11px;color:var(--muted);padding:2px 6px;">Loading...</span>';
+  // Hide type pills — TCGcollector doesn't provide supertype data for JA sets
+  const typePillsJa = document.getElementById('gal-type-pills');
+  if(typePillsJa) typePillsJa.style.display = 'none';
   const g = document.getElementById('gal-grid');
   g.innerHTML = Array(12).fill('<div><div class="skel-card"></div><div class="skel-info"></div></div>').join('');
 
