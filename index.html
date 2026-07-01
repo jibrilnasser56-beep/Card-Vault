@@ -5623,12 +5623,18 @@ function openTcgcViewer(cardIndex){
 const _pcPriceCache = {}; // session cache to avoid repeat lookups
 
 async function refreshJaPrices(manual=false){
-  const missing = collection.filter(c => c._source === 'tcgc' && (!c.price || c.price < 0.10));
+  // On manual trigger: refresh ALL JA/CN cards (replace TCGcollector prices with PriceCharting)
+  // On auto trigger at startup: only fill in cards with no price
+  const missing = manual
+    ? collection.filter(c => c._source === 'tcgc')
+    : collection.filter(c => c._source === 'tcgc' && (!c.price || c.price < 0.10));
   if(!missing.length){
-    if(manual) showToast('All JA/CN cards already have prices \u2014 use manual edit to adjust individual prices');
+    if(manual) showToast('No JA/CN cards in collection');
     return;
   }
-  if(manual) showToast(`\U0001F4B0 Looking up prices for ${missing.length} card${missing.length!==1?'s':''}...`);
+  if(manual) showToast(`💰 Refreshing prices for ${missing.length} card${missing.length!==1?'s':''}...`);
+  // Clear caches so we get fresh results
+  if(manual){ Object.keys(_pcPriceCache).forEach(k => delete _pcPriceCache[k]); Object.keys(_pcSetPageCache).forEach(k => delete _pcSetPageCache[k]); }
   let updated = 0;
   for(const card of missing){
     const isCn = /^\d+$/.test(card.set?.id || '');
@@ -5641,7 +5647,7 @@ async function refreshJaPrices(manual=false){
     await new Promise(r => setTimeout(r, 1100));
   }
   if(updated){ save(); updateStats(); renderGrid(); }
-  if(manual) showToast(`Updated ${updated} of ${missing.length} card prices`);
+  if(manual) showToast(`✓ Updated ${updated} of ${missing.length} card prices`);
 }
 
 // Mapping from our JA set IDs to PriceCharting set slugs
