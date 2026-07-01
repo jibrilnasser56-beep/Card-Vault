@@ -2346,7 +2346,7 @@ let binders=JSON.parse(localStorage.getItem('card-vault-binders')||'[]');
 // Migrate old base64 images to IndexedDB after page loads
 window.addEventListener('load', () => setTimeout(migrateBinderImages, 1500));
 let activeType='all',activeSort='added',activeRarity='';
-let galPage=1,galTotal=0,galCards=[],_searchCardCache={};
+let galPage=1,galTotal=0,galCards=[],_searchCardCache={},_galType='all';
 let viewerCard=null;
 let searchDebounce=null,searchAbort=null,currentSuggestions=[],_addingCard=false;
 let rotX=0,rotY=0,zoomScale=1,isDragging=false,lastX=0,lastY=0,velX=0,velY=0,rafSpin=null,rafHue=null,hueOffset=0;
@@ -3956,7 +3956,7 @@ function appendCnCard(grid, c){
     ? '<div class="pcard-owned-badge"><span>✓</span></div>'
     : '<div class="card-add-badge" onclick="event.stopPropagation();quickAddTcgcFromEl(this.closest(\'.pcard\'))">+</div>';
   el.innerHTML =
-    '<div class="pcard-inner" onclick="_galMultiSelect?toggleCardSelection(event,\'tcgc-\'+this.closest(\'.pcard\').dataset.tcgcId,\'all\'):openTcgcViewerFromEl(this.closest(\'.pcard\'))">' +
+    '<div class="pcard-inner" onclick="_galMultiSelect?toggleCardSelection(event,\'tcgc-\'+this.closest(\'.pcard\').dataset.tcgcId,\'gal\'):openTcgcViewerFromEl(this.closest(\'.pcard\'))">' +
       '<img class="pcard-img" src="'+(c.image||'')+'" alt="'+c.name+'" loading="lazy" onerror="this.style.opacity=\'0.3\'">' +
       '<div class="holo-rainbow"></div><div class="holo-shimmer"></div><div class="holo-glare"></div>' +
       badge +
@@ -4312,9 +4312,12 @@ function toggleCardSelection(e, id, source){
 }
 
 function updateMultiSelectBar(source){
-  const gridId = source === 'gal' ? 'gal-grid' : 'gal-all-grid';
-  const grid = document.getElementById(gridId);
-  if(!grid) return;
+  // Find the currently visible card grid container
+  const gridEl = source === 'all'
+    ? document.getElementById('gal-all-grid')
+    : (document.getElementById('gal-grid') || document.getElementById('tcgc-card-grid') || document.getElementById('cn-card-grid'));
+  const container = gridEl?.parentElement || document.getElementById('gal-card-browser');
+  if(!container) return;
   let bar = document.getElementById('gal-multiselect-bar-' + source);
   if(!_galMultiSelect){
     if(bar) bar.remove();
@@ -4324,7 +4327,7 @@ function updateMultiSelectBar(source){
     bar = document.createElement('div');
     bar.id = 'gal-multiselect-bar-' + source;
     bar.className = 'gal-multiselect-bar';
-    grid.parentElement.appendChild(bar);
+    container.appendChild(bar);
   }
   const count = _galSelected.size;
   bar.innerHTML = `
@@ -5524,7 +5527,7 @@ function renderTcgcGrid(rarity=''){
     const inVault = collection.some(x => x.id === 'tcgc-'+c.tcgcId);
     const isSelected = _galMultiSelected.has('tcgc-'+c.tcgcId);
     return `<div class="pcard${inVault?' pcard-owned':''}${isSelected?' pcard-selected':''}" data-tcgc-id="${c.tcgcId}" onmousemove="${_galMultiSelect?'':'holoMove(event,this)'}" onmouseleave="${_galMultiSelect?'':'holoReset(this)'}">
-      <div class="pcard-inner" onclick="${_galMultiSelect?`toggleCardSelection(event,'tcgc-'+this.closest('.pcard').dataset.tcgcId,'all')`:`openTcgcViewer(${i})`}">
+      <div class="pcard-inner" onclick="${_galMultiSelect?`toggleCardSelection(event,'tcgc-'+this.closest('.pcard').dataset.tcgcId,'gal')`:`openTcgcViewer(${i})`}">
         <img class="pcard-img" src="${c.image}" alt="${c.name}" loading="lazy" onerror="this.style.opacity='0.3'">
         <div class="holo-rainbow"></div><div class="holo-shimmer"></div><div class="holo-glare"></div>
         ${inVault
@@ -5863,7 +5866,7 @@ function appendJaCard(grid, c){
     ? '<div class="pcard-owned-badge"><span>✓</span></div>'
     : '<div class="card-add-badge" onclick="event.stopPropagation();quickAddTcgcFromEl(this.closest(\'.pcard\'))">+</div>';
   el.innerHTML =
-    '<div class="pcard-inner" onclick="_galMultiSelect?toggleCardSelection(event,\'tcgc-\'+this.closest(\'.pcard\').dataset.tcgcId,\'all\'):openTcgcViewerFromEl(this.closest(\'.pcard\'))">' +
+    '<div class="pcard-inner" onclick="_galMultiSelect?toggleCardSelection(event,\'tcgc-\'+this.closest(\'.pcard\').dataset.tcgcId,\'gal\'):openTcgcViewerFromEl(this.closest(\'.pcard\'))">' +
       '<img class="pcard-img" src="'+(c.image||'')+'" alt="'+c.name+'" loading="lazy" onerror="this.style.opacity=\'0.3\'">' +
       '<div class="holo-rainbow"></div><div class="holo-shimmer"></div><div class="holo-glare"></div>' +
       badge +
