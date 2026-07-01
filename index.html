@@ -3935,8 +3935,7 @@ async function cnIndexPrewarm(){
     const inp = document.getElementById('gal-search-input');
     if(inp && inp.value.trim().length >= 2 && _galLang === 'zh-cn'){
       renderCnSearchResults(inp.value.trim(), true);
-    }
-  }
+    }  }
   _cnIndexReady = true;
   const cnDoneStatus = document.getElementById('gal-all-status');
   if(cnDoneStatus && _galLang === 'zh-cn'){
@@ -5583,34 +5582,72 @@ async function enrichTcgcGridPrices(){
   const cards = window._tcgcCards;
   const setId = window._tcgcSetId;
   if(!cards || !cards.length || !setId) return;
-  if(_enrichingSet === setId) return; // already running for this set
+  if(_enrichingSet === setId) return;
   _enrichingSet = setId;
 
   const isCn = /^\d+$/.test(setId);
   const lang = isCn ? 'chinese' : 'japanese';
   const slugMap = isCn ? PC_CN_SLUGS : PC_JA_SLUGS;
   const slug = slugMap[setId];
-  if(!slug){ _enrichingSet = null; return; } // no mapping for this set
+  if(!slug){ _enrichingSet = null; return; }
 
-  const setMap = await fetchSetPagePrices(slug, lang);
-  if(!setMap || !Object.keys(setMap).length){ _enrichingSet = null; return; }
-
-  let updated = false;
-  cards.forEach(c => {
-    if(c._pcPrice) return; // already enriched
-    const cleanNum = (c.number||'').replace(/^0+/,'').split('/')[0].replace(/^0+/,'');
-    const priceUSD = setMap[cleanNum];
-    if(priceUSD){
-      c._pcPrice = Math.round(priceUSD * 0.79 * 100) / 100;
-      // Update the DOM price label if the card is currently rendered
-      const el = document.querySelector(`[data-tcgc-price="${c.tcgcId}"]`);
-      if(el){
-        el.textContent = `#${c.number} · £${c._pcPrice.toFixed(2)}`;
+  if(isCn){
+    // CN: fetch set page directly
+    const setMap = await fetchSetPagePrices(slug, lang);
+    if(!setMap){ _enrichingSet = null; return; }
+    cards.forEach(c => {
+      if(c._pcPrice) return;
+      const cleanNum = (c.number||'').replace(/^0+/,'').split('/')[0].replace(/^0+/,'');
+      const priceUSD = setMap[cleanNum];
+      if(priceUSD){
+        c._pcPrice = Math.round(priceUSD * 0.79 * 100) / 100;
+        const el = document.querySelector(`[data-tcgc-price="${c.tcgcId}"]`);
+        if(el) el.textContent = `#${c.number} · £${c._pcPrice.toFixed(2)}`;
       }
-      updated = true;
-    }
-  });
+    });
+  } else {
+    // JA: fetch all prices in 1-2 bulk requests using set name search
+    const setName = slug.replace(/-/g,' ');
+    const priceMap = {}; // number -> priceGBP
 
+    for(const page of [1, 2]){
+      try {
+        const q = encodeURIComponent(`${setName} japanese pokemon`);
+        const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices&page=${page}`;
+        const res = await fetch(TCGC_PROXY + '?url=' + encodeURIComponent(url));
+        if(!res.ok) break;
+        const html = await res.text();
+        const rowRegex = /<tr[^>]*id="product-\d+"[^>]*>([\s\S]*?)<\/tr>/g;
+        let match, hasRows = false;
+        while((match = rowRegex.exec(html)) !== null){
+          hasRows = true;
+          const row = match[1];
+          const numM = row.match(/#(\d+)/);
+          const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
+          if(!numM || !priceM) continue;
+          const num = numM[1].replace(/^0+/,'');
+          const priceUSD = parseFloat(priceM[1].replace(',',''));
+          // Keep highest price for each number (most valuable variant)
+          if(priceUSD > 0 && (!priceMap[num] || priceUSD > priceMap[num] * 1.27)){
+            priceMap[num] = Math.round(priceUSD * 0.79 * 100) / 100;
+          }
+        }
+        if(!hasRows) break;
+        await new Promise(r => setTimeout(r, 1100)); // respect rate limit between pages
+      } catch(e){ break; }
+    }
+
+    // Apply prices to all cards at once
+    cards.forEach(c => {
+      if(c._pcPrice) return;
+      const cleanNum = (c.number||'').replace(/^0+/,'').split('/')[0].replace(/^0+/,'');
+      if(priceMap[cleanNum]){
+        c._pcPrice = priceMap[cleanNum];
+        const el = document.querySelector(`[data-tcgc-price="${c.tcgcId}"]`);
+        if(el) el.textContent = `#${c.number} · £${c._pcPrice.toFixed(2)}`;
+      }
+    });
+  }
   _enrichingSet = null;
 }
 
@@ -5811,15 +5848,43 @@ async function fetchPriceCharting(cardName, cardNumber, lang='japanese', setId='
   try {
     let priceUSD = null;
 
-    // Strategy 0: set page lookup by number (most accurate for CN/JA)
+    // Strategy 0: for CN use set page (works); for JA use search with set name (set pages blocked)
     if(cardNumber && cardNumber !== '?'){
       const slugMap = lang === 'chinese' ? PC_CN_SLUGS : PC_JA_SLUGS;
       const slug = setId ? slugMap[setId] : null;
       if(slug){
-        const setMap = await fetchSetPagePrices(slug, lang);
-        if(setMap){
-          const cleanNum = cardNumber.replace(/^0+/,'').split('/')[0].replace(/^0+/,'');
-          priceUSD = setMap[cleanNum] || null;
+        if(lang === 'chinese'){
+          // CN: fetch set page directly (not blocked)
+          const setMap = await fetchSetPagePrices(slug, lang);
+          if(setMap){
+            const cleanNum = cardNumber.replace(/^0+/,'').split('/')[0].replace(/^0+/,'');
+            priceUSD = setMap[cleanNum] || null;
+          }
+        } else {
+          // JA: set pages are Cloudflare-blocked, use search with set name
+          const setName = slug.replace(/-/g,' ');
+          const q = encodeURIComponent(`${cardName} ${setName} japanese pokemon`);
+          const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices`;
+          const res = await fetch(TCGC_PROXY + '?url=' + encodeURIComponent(url));
+          if(res.ok){
+            const html = await res.text();
+            const rowRegex = /<tr[^>]*id="product-\d+"[^>]*>([\s\S]*?)<\/tr>/g;
+            let match, bestScore = -1;
+            while((match = rowRegex.exec(html)) !== null){
+              const row = match[1];
+              const nameM = row.match(/class="title"[\s\S]*?<a[^>]*>\s*([^<]+?)\s*<\/a>/);
+              if(!nameM) continue;
+              const rowName = nameM[1].trim().toLowerCase();
+              const target = cardName.toLowerCase().replace(/\s*(ex|EX|GX|V|VMAX|VSTAR|e)\s*$/, '').trim();
+              if(!rowName.includes(target.split(' ')[0])) continue;
+              let score = rowName.includes(target) ? 2 : 1;
+              if(row.includes(`#${cardNumber}`)) score += 3;
+              const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
+              if(!priceM) continue;
+              const p = parseFloat(priceM[1].replace(',',''));
+              if(p > 0 && score > bestScore){ bestScore = score; priceUSD = p; }
+            }
+          }
         }
       }
     }
@@ -6159,14 +6224,13 @@ async function jaIndexPrewarm(){
     await Promise.all(batch.map(id => jaIndexFetchSet(id)));
     // Update search if user is actively searching
     const inp = document.getElementById('gal-search-input');
-    if(inp && inp.value.trim().length >= 2 && _galLang !== 'en'){
+    if(inp && inp.value.trim().length >= 2 && _galLang !== 'en' && _galLang !== 'all'){
       renderJaSearchResults(inp.value.trim(), true);
     }
   }
   _jaIndexReady = true;
-  // Update status if user is on the search view
   const jaStatus = document.getElementById('gal-all-status');
-  if(jaStatus && _galLang !== 'en' && _galLang !== 'zh-cn'){
+  if(jaStatus && _galLang !== 'en' && _galLang !== 'zh-cn' && _galLang !== 'all'){
     const inp = document.getElementById('gal-search-input');
     const q = inp ? inp.value.trim() : '';
     if(q.length >= 2) renderJaSearchResults(q);
@@ -6251,6 +6315,15 @@ function renderJaSearchResults(query, append=false){
   initUpscaleObserver();
 }
 
+
+function galAllCardClick(event, tcgcId, name, image, rarity, number){
+  if(_galMultiSelect){
+    const pcard = event.currentTarget.closest('.pcard');
+    if(pcard) toggleCardSelection(event, 'tcgc-'+tcgcId, 'gal');
+  } else {
+    openTcgcViewerCard(tcgcId, name, image, rarity, number);
+  }
+}
 async function galSearchALL(query, page){
   const status = document.getElementById('gal-all-status');
   const grid = document.getElementById('gal-all-grid');
@@ -6264,16 +6337,18 @@ async function galSearchALL(query, page){
   const enPromise = fetch(`${API}/cards?q=${encodeURIComponent('name:"'+query+'*"')}&pageSize=48&orderBy=-set.releaseDate,number&select=id,name,number,rarity,images,set,tcgplayer`)
     .then(r => r.json()).then(d => d.data || []).catch(() => []);
 
-  // JA search — ensure index is built
-  if(!_jaIndexReady) jaIndexPrewarm();
+  // JA search — use existing index without triggering prewarm (prewarm has rendering side effects)
   const jaCards = Object.values(_jaCardIndex).flat().filter(c =>
     c.name && c.name.toLowerCase().includes(q)
   );
+  // Trigger prewarm silently only if not ready (no rendering callbacks will fire for 'all' mode)
+  if(!_jaIndexReady) jaIndexPrewarm();
 
-  // CN search — search CN index
+  // CN search
   const cnCards = Object.values(_cnCardIndex || {}).flat().filter(c =>
     c.name && c.name.toLowerCase().includes(q)
   );
+  if(!_cnIndexReady) cnIndexPrewarm();
 
   const enCards = await enPromise;
 
