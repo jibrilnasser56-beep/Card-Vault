@@ -4229,28 +4229,64 @@ async function loadGallery(page=1){
       q += ` rarity:"${rarity}"`;
     }
 
-    // When viewing a specific set, fetch ALL pages for a complete view
+    // When viewing a specific set, check sessionStorage cache first
     if(setId){
-      let allCards = [], pg = 1, total = Infinity;
-      while(allCards.length < total){
-        const res = await fetch(`${API}/cards?q=${encodeURIComponent(q)}&pageSize=250&page=${pg}&orderBy=number`);
-        const data = await res.json();
-        total = data.totalCount || 0;
-        allCards = allCards.concat(data.data||[]);
-        if((data.data||[]).length < 250) break;
-        pg++;
+      const cacheKey = `enSet_${setId}`;
+      const cached = (() => { try { const v = sessionStorage.getItem(cacheKey); return v ? JSON.parse(v) : null; } catch(e){ return null; } })();
+
+      if(cached){
+        // Instant load from cache — prices already baked in
+        galCards = cached; galTotal = cached.length;
+        clearStatus('gal-status'); renderGallery();
+        document.getElementById('gal-page-info').textContent = cached.length.toLocaleString()+' cards';
+        document.getElementById('gal-pagination').style.display = 'none';
+        updateCompletionBar();
+      } else {
+        // Fetch first page and render immediately
+        const res1 = await fetch(`${API}/cards?q=${encodeURIComponent(q)}&pageSize=250&page=1&orderBy=number`);
+        const data1 = await res1.json();
+        const total = data1.totalCount || 0;
+        let allCards = data1.data || [];
+        galCards = allCards; galTotal = total;
+        clearStatus('gal-status'); renderGallery();
+        document.getElementById('gal-page-info').textContent = total.toLocaleString()+' cards';
+        document.getElementById('gal-pagination').style.display = 'none';
+        updateCompletionBar();
+
+        // Fetch remaining pages in background
+        if(allCards.length < total){
+          let pg = 2;
+          while(allCards.length < total){
+            const res = await fetch(`${API}/cards?q=${encodeURIComponent(q)}&pageSize=250&page=${pg}&orderBy=number`);
+            const data = await res.json();
+            const newCards = data.data || [];
+            if(!newCards.length) break;
+            allCards = allCards.concat(newCards);
+            galCards = allCards; galTotal = total;
+            renderGallery();
+            updateCompletionBar();
+            if(newCards.length < 250) break;
+            pg++;
+          }
+        }
+
+        // Enrich missing prices from PriceCharting then cache everything
+        if(allCards.some(c => !getPrice(c))){
+          await enrichEnSetPrices(setId, allCards);
+          galCards = allCards; renderGallery();
+        }
+
+        // Cache full set with prices baked in
+        try {
+          const slim = allCards.map(c => {
+            const obj = {id:c.id,name:c.name,number:c.number,rarity:c.rarity,
+              images:c.images,set:c.set,cardmarket:c.cardmarket,tcgplayer:c.tcgplayer};
+            if(c._pcPrice) obj._pcPrice = c._pcPrice;
+            return obj;
+          });
+          sessionStorage.setItem(cacheKey, JSON.stringify(slim));
+        } catch(e){}
       }
-      if(rarity){
-        if(rarity === 'Black White Rare') allCards = allCards.filter(c => isMonochromeRare(c));
-        else allCards = allCards.filter(c => !isMonochromeRare(c) && c.rarity === rarity);
-      }
-      galCards = allCards; galTotal = allCards.length;
-      clearStatus('gal-status'); renderGallery();
-      document.getElementById('gal-page-info').textContent = galTotal.toLocaleString()+' cards';
-      document.getElementById('gal-pagination').style.display = 'none';
-      updateCompletionBar();
-      // Enrich missing prices from PriceCharting for new sets not yet in pokemontcg.io pricing
-      if(allCards.some(c => !getPrice(c))) enrichEnSetPrices(setId, allCards);
     } else {
       // All Cards / no set — keep pagination
       const res=await fetch(`${API}/cards?q=${encodeURIComponent(q)}&pageSize=${GAL_PG}&page=${page}&orderBy=number`);
@@ -5597,11 +5633,11 @@ async function enrichEnSetPrices(setId, cards){
   if(_enrichingEnSet === setId) return;
   _enrichingEnSet = setId;
 
-  // Get the set name for the search query
   const set = _allSets.find(s => s.id === setId);
   const setName = set?.name || setId;
   const priceMap = {}; // number -> priceGBP
 
+  // Phase 1: bulk set search (1-2 requests, gets popular cards)
   for(const page of [1, 2]){
     try {
       const q = encodeURIComponent(`${setName} pokemon`);
@@ -5617,39 +5653,64 @@ async function enrichEnSetPrices(setId, cards){
         const numM = row.match(/#(\d+)/);
         const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
         if(!numM || !priceM) continue;
-        const num = numM[1].replace(/^0+/,'');
+        const num = numM[1].replace(/^0+/,'') || '0';
         const priceUSD = parseFloat(priceM[1].replace(',',''));
-        if(priceUSD > 0 && !priceMap[num]){
+        if(priceUSD > 0 && !priceMap[num])
           priceMap[num] = Math.round(priceUSD * 0.79 * 100) / 100;
-        }
       }
       if(!hasRows) break;
       await new Promise(r => setTimeout(r, 1100));
     } catch(e){ break; }
   }
 
-  // Apply prices to cards missing them, update DOM
-  let updated = false;
+  // Apply phase 1 prices
   cards.forEach(c => {
-    if(getPrice(c) > 0) return; // already has price from pokemontcg.io
+    if(getPrice(c) > 0 || c._pcPrice) return;
     const num = (c.number||'').replace(/^0+/,'');
-    if(priceMap[num]){
-      // Store as a temporary price on the card object for display
-      c._pcPrice = priceMap[num];
-      // Update the price display in the rendered grid
-      const cardEls = document.querySelectorAll('#gal-grid .pcard');
-      cardEls.forEach(el => {
-        const img = el.querySelector('.pcard-img');
-        if(img?.alt === c.name){
-          const priceEl = el.querySelector('.card-price-val');
-          if(priceEl && priceEl.textContent === '£0.00'){
-            priceEl.textContent = `£${priceMap[num].toFixed(2)}`;
-          }
-        }
-      });
-      updated = true;
-    }
+    if(priceMap[num]) c._pcPrice = priceMap[num];
   });
+
+  // Phase 2: search individually for cards still missing, grouped by unique name
+  const stillMissing = cards.filter(c => !getPrice(c) && !c._pcPrice && c.number);
+  if(stillMissing.length && _enrichingEnSet === setId){
+    // Group by name to avoid duplicate searches (e.g. 6 Pikachus = 1 search)
+    const byName = {};
+    stillMissing.forEach(c => {
+      const base = c.name.replace(/\s*(ex|EX|GX|V|VMAX|VSTAR)\s*$/, '').trim();
+      if(!byName[base]) byName[base] = [];
+      byName[base].push(c);
+    });
+
+    for(const [name, group] of Object.entries(byName)){
+      if(_enrichingEnSet !== setId) break;
+      try {
+        const q = encodeURIComponent(`${name} ${setName} pokemon`);
+        const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices`;
+        const res = await fetch(TCGC_PROXY + '?url=' + encodeURIComponent(url));
+        if(!res.ok){ await new Promise(r => setTimeout(r, 1100)); continue; }
+        const html = await res.text();
+        const rowRegex = /<tr[^>]*id="product-\d+"[^>]*>([\s\S]*?)<\/tr>/g;
+        let match;
+        while((match = rowRegex.exec(html)) !== null){
+          const row = match[1];
+          const numM = row.match(/#(\d+)/);
+          const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
+          if(!numM || !priceM) continue;
+          const num = numM[1].replace(/^0+/,'') || '0';
+          const priceUSD = parseFloat(priceM[1].replace(',',''));
+          if(priceUSD > 0 && !priceMap[num])
+            priceMap[num] = Math.round(priceUSD * 0.79 * 100) / 100;
+        }
+        // Apply to this group
+        group.forEach(c => {
+          if(c._pcPrice) return;
+          const num = (c.number||'').replace(/^0+/,'');
+          if(priceMap[num]) c._pcPrice = priceMap[num];
+        });
+        await new Promise(r => setTimeout(r, 1100));
+      } catch(e){ await new Promise(r => setTimeout(r, 1100)); }
+    }
+  }
 
   _enrichingEnSet = null;
 }
