@@ -1755,6 +1755,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   <button class="tab" onclick="switchTab('community')">Community</button>
   <button onclick="openExportModal()" style="margin-left:auto;background:none;border:0.5px solid var(--border2);border-radius:8px;color:var(--muted);font-family:var(--font);font-size:11px;padding:6px 14px;cursor:pointer;transition:color .15s;white-space:nowrap;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">↓ Export PDF</button>
   <button onclick="exportBinderBackup()" style="background:none;border:0.5px solid var(--border2);border-radius:8px;color:var(--muted);font-family:var(--font);font-size:11px;padding:6px 14px;cursor:pointer;transition:color .15s;white-space:nowrap;" title="Download a backup of your entire vault" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">⬇ Backup</button>
+  <button onclick="refreshJaPrices(true)" style="background:none;border:0.5px solid var(--border2);border-radius:8px;color:var(--muted);font-family:var(--font);font-size:11px;padding:6px 14px;cursor:pointer;transition:color .15s;white-space:nowrap;" title="Fetch missing prices for JA/CN cards" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">💰 Refresh prices</button>
   <label style="background:none;border:0.5px solid var(--border2);border-radius:8px;color:var(--muted);font-family:var(--font);font-size:11px;padding:6px 14px;cursor:pointer;transition:color .15s;white-space:nowrap;" title="Restore vault from a backup file" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">⬆ Restore<input type="file" accept=".cvbackup,.json" onchange="importBinderBackup(event)" style="display:none"></label>
 </div>
 
@@ -5619,12 +5620,100 @@ function openTcgcViewer(cardIndex){
   openViewerCard(card);
 }
 
+const _pcPriceCache = {}; // session cache to avoid repeat lookups
+
+async function refreshJaPrices(manual=false){
+  const missing = collection.filter(c => c._source === 'tcgc' && (!c.price || c.price === 0));
+  if(!missing.length){
+    if(manual) showToast('All JA/CN cards already have prices');
+    return;
+  }
+  if(manual) showToast(`💰 Looking up prices for ${missing.length} card${missing.length!==1?'s':''}...`);
+  let updated = 0;
+  for(const card of missing){
+    const price = await fetchPriceCharting(card.name, card.number, 'japanese');
+    if(price){
+      card.price = price;
+      updated++;
+    }
+    // Respect PriceCharting rate limit: 1 call per second
+    await new Promise(r => setTimeout(r, 1100));
+  }
+  if(updated){ save(); updateStats(); renderGrid(); }
+  if(manual) showToast(`✓ Updated ${updated} of ${missing.length} card prices`);
+}
+
+async function fetchPriceCharting(cardName, cardNumber, lang='japanese'){
+  const cacheKey = `${lang}:${cardName}:${cardNumber}`;
+  if(_pcPriceCache[cacheKey] !== undefined) return _pcPriceCache[cacheKey];
+
+  try {
+    const q = encodeURIComponent(`${cardName} ${lang} pokemon`);
+    const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices`;
+    const proxyUrl = TCGC_PROXY + '?url=' + encodeURIComponent(url);
+    const res = await fetch(proxyUrl);
+    if(!res.ok) throw new Error('proxy failed');
+    const html = await res.text();
+
+    // Parse product rows
+    const rowRegex = /<tr[^>]*id="product-(\d+)"[^>]*>([\s\S]*?)<\/tr>/g;
+    let match, bestPrice = null, bestScore = -1;
+
+    while((match = rowRegex.exec(html)) !== null){
+      const row = match[2];
+      // Extract name
+      const nameM = row.match(/class="title"[\s\S]*?<a[^>]*>([^<]+)<\/a>/);
+      if(!nameM) continue;
+      const rowName = nameM[1].trim().toLowerCase();
+      const targetName = cardName.toLowerCase();
+
+      // Score: exact name match > contains name
+      let score = 0;
+      if(rowName === targetName) score = 3;
+      else if(rowName.startsWith(targetName)) score = 2;
+      else if(rowName.includes(targetName)) score = 1;
+      else continue;
+
+      // Bonus: card number match
+      if(cardNumber && row.includes(`#${cardNumber}`)) score += 2;
+
+      // Extract ungraded price
+      const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
+      if(!priceM) continue;
+      const priceUSD = parseFloat(priceM[1].replace(',',''));
+      if(isNaN(priceUSD) || priceUSD <= 0) continue;
+
+      if(score > bestScore){
+        bestScore = score;
+        bestPrice = priceUSD;
+      }
+    }
+
+    // Convert USD to GBP (approximate 0.79 rate)
+    const priceGBP = bestPrice ? Math.round(bestPrice * 0.79 * 100) / 100 : null;
+    _pcPriceCache[cacheKey] = priceGBP;
+    return priceGBP;
+  } catch(e){
+    console.warn('PriceCharting lookup failed:', e);
+    _pcPriceCache[cacheKey] = null;
+    return null;
+  }
+}
+
 async function quickAddTcgc(e, cardIndex){
   e.stopPropagation();
   const c = window._tcgcCards?.[cardIndex];
   if(!c) return;
   const setInfo = getJaSetInfo(window._tcgcSetId || '');
   const rarityShort = c.rarity.replace(/\s*\([^)]+\)/,'').trim();
+  const lang = _activeSetLang === 'zh-cn' ? 'chinese' : 'japanese';
+
+  // Parse existing price if available
+  let priceGBP = null;
+  if(c.price && c.price !== '-'){
+    priceGBP = Math.round(parseFloat(c.price.replace('$','').replace(',','')) * 0.79 * 100) / 100;
+  }
+
   const card = {
     id: 'tcgc-'+c.tcgcId,
     name: c.name,
@@ -5632,11 +5721,12 @@ async function quickAddTcgc(e, cardIndex){
     rarity: rarityShort || c.rarity,
     images: { small: c.image, large: c.image },
     set: { name: setInfo?.name || '', id: window._tcgcSetId || '' },
-    tcgplayer: c.price && c.price !== '-' ? { prices: { holofoil: { market: parseFloat(c.price.replace('$','').replace(',','')) * 0.79 } } } : null,
     _source: 'tcgc',
+    price: priceGBP || 0,
   };
   addCard(card);
-  // Update the grid card appearance
+
+  // Update grid card appearance immediately
   const gridCards = document.querySelectorAll('#gal-grid .pcard');
   if(gridCards[cardIndex]){
     gridCards[cardIndex].classList.add('pcard-owned');
@@ -9878,6 +9968,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
   initOnboarding();
   const hint = document.getElementById('resize-zoom-hint');
   if(hint && 'ontouchstart' in window) hint.textContent = 'Pinch or use slider to zoom';
+  // Silently enrich JA/CN cards missing prices after a short delay
+  setTimeout(() => refreshJaPrices(false), 3000);
 });
 /* ══ END ONBOARDING ══ */
 
