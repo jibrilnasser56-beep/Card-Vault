@@ -4235,10 +4235,13 @@ async function loadGallery(page=1){
       const cached = (() => { try { const v = sessionStorage.getItem(cacheKey); return v ? JSON.parse(v) : null; } catch(e){ return null; } })();
 
       if(cached){
-        // Instant load from cache — prices already baked in
-        galCards = cached; galTotal = cached.length;
+        // Instant load from cache — filter rarity client-side
+        const filtered = rarity
+          ? cached.filter(c => rarity === 'Black White Rare' ? isMonochromeRare(c) : (!isMonochromeRare(c) && c.rarity === rarity))
+          : cached;
+        galCards = filtered; galTotal = filtered.length;
         clearStatus('gal-status'); renderGallery();
-        document.getElementById('gal-page-info').textContent = cached.length.toLocaleString()+' cards';
+        document.getElementById('gal-page-info').textContent = filtered.length.toLocaleString()+' cards';
         document.getElementById('gal-pagination').style.display = 'none';
         updateCompletionBar();
       } else {
@@ -5637,8 +5640,9 @@ async function enrichEnSetPrices(setId, cards){
   const setName = set?.name || setId;
   const priceMap = {}; // number -> priceGBP
 
-  // Phase 1: bulk set search (1-2 requests, gets popular cards)
+  // Phase 1: two bulk set searches — covers popular/expensive cards fast
   for(const page of [1, 2]){
+    if(_enrichingEnSet !== setId) break;
     try {
       const q = encodeURIComponent(`${setName} pokemon`);
       const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices&page=${page}`;
@@ -5650,7 +5654,7 @@ async function enrichEnSetPrices(setId, cards){
       while((match = rowRegex.exec(html)) !== null){
         hasRows = true;
         const row = match[1];
-        const numM = row.match(/#(\d+)/);
+        const numM = row.match(/-(\d+)"/);  // extract from href like /kakuna-2"
         const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
         if(!numM || !priceM) continue;
         const num = numM[1].replace(/^0+/,'') || '0';
@@ -5670,46 +5674,39 @@ async function enrichEnSetPrices(setId, cards){
     if(priceMap[num]) c._pcPrice = priceMap[num];
   });
 
-  // Phase 2: search individually for cards still missing, grouped by unique name
+  // Phase 2: search every remaining card individually by name + number
   const stillMissing = cards.filter(c => !getPrice(c) && !c._pcPrice && c.number);
-  if(stillMissing.length && _enrichingEnSet === setId){
-    // Group by name to avoid duplicate searches (e.g. 6 Pikachus = 1 search)
-    const byName = {};
-    stillMissing.forEach(c => {
-      const base = c.name.replace(/\s*(ex|EX|GX|V|VMAX|VSTAR)\s*$/, '').trim();
-      if(!byName[base]) byName[base] = [];
-      byName[base].push(c);
-    });
-
-    for(const [name, group] of Object.entries(byName)){
-      if(_enrichingEnSet !== setId) break;
-      try {
-        const q = encodeURIComponent(`${name} ${setName} pokemon`);
-        const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices`;
-        const res = await fetch(TCGC_PROXY + '?url=' + encodeURIComponent(url));
-        if(!res.ok){ await new Promise(r => setTimeout(r, 1100)); continue; }
+  for(const c of stillMissing){
+    if(_enrichingEnSet !== setId) break;
+    try {
+      const cleanName = c.name.replace(/\s*(ex|EX|GX|V|VMAX|VSTAR)\s*$/, '').trim();
+      const q = encodeURIComponent(`${cleanName} #${c.number} ${setName} pokemon`);
+      const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices`;
+      const res = await fetch(TCGC_PROXY + '?url=' + encodeURIComponent(url));
+      if(res.ok){
         const html = await res.text();
+        // Find first row with a matching number in the href
         const rowRegex = /<tr[^>]*id="product-\d+"[^>]*>([\s\S]*?)<\/tr>/g;
         let match;
         while((match = rowRegex.exec(html)) !== null){
           const row = match[1];
-          const numM = row.match(/#(\d+)/);
+          // Extract number from href pattern like /card-name-3" → 3
+          const hrefNumM = row.match(/\/[a-z0-9-]+-(\d+)"/);
           const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
-          if(!numM || !priceM) continue;
-          const num = numM[1].replace(/^0+/,'') || '0';
+          if(!hrefNumM || !priceM) continue;
+          const rowNum = hrefNumM[1].replace(/^0+/,'');
+          const cardNum = c.number.replace(/^0+/,'');
+          if(rowNum !== cardNum) continue;
           const priceUSD = parseFloat(priceM[1].replace(',',''));
-          if(priceUSD > 0 && !priceMap[num])
-            priceMap[num] = Math.round(priceUSD * 0.79 * 100) / 100;
+          if(priceUSD > 0){
+            c._pcPrice = Math.round(priceUSD * 0.79 * 100) / 100;
+            priceMap[cardNum] = c._pcPrice;
+            break;
+          }
         }
-        // Apply to this group
-        group.forEach(c => {
-          if(c._pcPrice) return;
-          const num = (c.number||'').replace(/^0+/,'');
-          if(priceMap[num]) c._pcPrice = priceMap[num];
-        });
-        await new Promise(r => setTimeout(r, 1100));
-      } catch(e){ await new Promise(r => setTimeout(r, 1100)); }
-    }
+      }
+      await new Promise(r => setTimeout(r, 1100));
+    } catch(e){ await new Promise(r => setTimeout(r, 1100)); }
   }
 
   _enrichingEnSet = null;
