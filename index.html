@@ -4750,7 +4750,11 @@ function renderAllLangSetGrid(sets){
   grid.innerHTML = sets.map(s => {
     const logo = s.images?.logo || '';
     const flag = langFlag[s._lang] || '';
-    return `<div class="set-card" onclick="${s._lang==='en'?`openSetView('${s.id}')`:s._lang==='zh-cn'?`openCnSetView('${s.id}')`:``}" style="${!s._lang||s._lang==='ja'?'cursor:default;opacity:.7':''}">>
+    let clickHandler;
+    if(s._lang === 'en') clickHandler = `openSetView('${s.id}')`;
+    else if(s._lang === 'zh-cn') clickHandler = `openCnSetView('${s.id}')`;
+    else clickHandler = `openTcgdexSetView('${s.id}','ja')`;
+    return `<div class="set-card" onclick="${clickHandler}">
       <div class="set-card-logo">${logo?`<img src="${logo}" alt="${s.name}" loading="lazy">`:'<div class="set-card-placeholder"></div>'}</div>
       <div class="set-card-info">
         <div class="set-card-name">${s.name}</div>
@@ -4760,6 +4764,7 @@ function renderAllLangSetGrid(sets){
   }).join('');
   document.getElementById('gal-set-count').textContent = sets.length + ' sets';
 }
+
 // Logos sourced from tcgcollector.com
 const JA_SET_LOOKUP = {
   // Mega Evolution Era (2025–2026)
@@ -5525,7 +5530,7 @@ function renderTcgcGrid(rarity=''){
   g.innerHTML = filtered.map(c => {
     const i = cards.indexOf(c);
     const inVault = collection.some(x => x.id === 'tcgc-'+c.tcgcId);
-    const isSelected = _galMultiSelected.has('tcgc-'+c.tcgcId);
+    const isSelected = _galSelected.has('tcgc-'+c.tcgcId);
     return `<div class="pcard${inVault?' pcard-owned':''}${isSelected?' pcard-selected':''}" data-tcgc-id="${c.tcgcId}" onmousemove="${_galMultiSelect?'':'holoMove(event,this)'}" onmouseleave="${_galMultiSelect?'':'holoReset(this)'}">
       <div class="pcard-inner" onclick="${_galMultiSelect?`toggleCardSelection(event,'tcgc-'+this.closest('.pcard').dataset.tcgcId,'gal')`:`openTcgcViewer(${i})`}">
         <img class="pcard-img" src="${c.image}" alt="${c.name}" loading="lazy" onerror="this.style.opacity='0.3'">
