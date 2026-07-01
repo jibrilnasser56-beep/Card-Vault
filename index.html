@@ -4730,6 +4730,22 @@ function setGalLang(lang){
   if(allMore) allMore.style.display = 'none';
   _tcgdexSets = [];
   _setsLoaded = false;
+  // If there's an active search query, go straight to All Cards view — skip set browser entirely
+  if(preservedQuery && lang !== 'all'){
+    document.getElementById('gal-all-browser').style.display = '';
+    document.getElementById('gal-set-browser').style.display = 'none';
+    document.getElementById('gal-card-browser').style.display = 'none';
+    document.getElementById('gal-view-sets-btn').classList.remove('active');
+    document.getElementById('gal-view-all-btn').classList.add('active');
+    // Kick off background set loading without showing the set browser
+    if(lang === 'en') loadSets();
+    else if(lang === 'zh-cn'){ loadCnSets(); if(!_cnIndexReady) setTimeout(cnIndexPrewarm, 1000); }
+    else loadTcgdexSets(lang);
+    const inp = document.getElementById('gal-search-input');
+    if(inp) inp.value = preservedQuery;
+    runGalSearch(1);
+    return;
+  }
   // Reset and reload
   if(lang === 'all'){
     document.getElementById('gal-all-browser').style.display = 'none';
@@ -4758,22 +4774,6 @@ function setGalLang(lang){
     } else {
       loadTcgdexSets(lang);
     }
-  }
-  // If user had an active search in All Cards view, switch to that view and re-run search
-  if(preservedQuery && lang !== 'all'){
-    setTimeout(() => {
-      const allBrowser = document.getElementById('gal-all-browser');
-      const setBrowser = document.getElementById('gal-set-browser');
-      if(allBrowser && setBrowser){
-        allBrowser.style.display = '';
-        setBrowser.style.display = 'none';
-        document.getElementById('gal-view-sets-btn')?.classList.remove('active');
-        document.getElementById('gal-view-all-btn')?.classList.add('active');
-      }
-      const inp = document.getElementById('gal-search-input');
-      if(inp) inp.value = preservedQuery;
-      runGalSearch(1);
-    }, 100);
   }
   // Note: _setsLoaded is set to true inside loadSets/loadTcgdexSets when done
 }
