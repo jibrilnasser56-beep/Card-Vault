@@ -1853,6 +1853,11 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       </select>
       <button id="batch-price-btn" onclick="toggleBatchPriceMode()" style="padding:4px 12px;border-radius:6px;border:0.5px solid #3db87c;background:rgba(61,184,124,.15);color:#3db87c;font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;margin-left:auto;">✎ Edit prices</button>
     </div>
+    <!-- Row 3: rarity filter (populated dynamically) -->
+    <div id="collection-rarity-row" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+      <span class="filter-label">Rarity</span>
+      <button class="rar-pill active" data-col-rarity="" onclick="setCollectionRarity('')">All</button>
+    </div>
   </div>
   <div id="cview-cards-panel">
   <div class="card-grid" id="card-grid">
@@ -1878,6 +1883,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
         <button class="lang-btn active" data-lang="en" onclick="setGalLang('en')">🇬🇧 EN</button>
         <button class="lang-btn" data-lang="ja" onclick="setGalLang('ja')">🇯🇵 JA</button>
         <button class="lang-btn" data-lang="zh-cn" onclick="setGalLang('zh-cn')">🇨🇳 CH</button>
+        <button class="lang-btn" data-lang="all" onclick="setGalLang('all')">🌐 All</button>
       </div>
     </div>
   </div>
@@ -2339,7 +2345,7 @@ let collection=JSON.parse(localStorage.getItem('card-vault-v4')||'[]');
 let binders=JSON.parse(localStorage.getItem('card-vault-binders')||'[]');
 // Migrate old base64 images to IndexedDB after page loads
 window.addEventListener('load', () => setTimeout(migrateBinderImages, 1500));
-let activeType='all',activeSort='added';
+let activeType='all',activeSort='added',activeRarity='';
 let galPage=1,galTotal=0,galCards=[],_searchCardCache={};
 let viewerCard=null;
 let searchDebounce=null,searchAbort=null,currentSuggestions=[],_addingCard=false;
@@ -3282,6 +3288,7 @@ function animateCounter(el, target, prefix='', suffix=''){
 }
 
 function updateStats(){
+  updateCollectionRarityPills();
   const tot=collection.reduce((s,c)=>s+(c.price||0),0);
   animateCounter(document.getElementById('stat-value'), parseFloat(tot.toFixed(2)), '£');
   animateCounter(document.getElementById('stat-count'), collection.length);
@@ -3297,6 +3304,7 @@ function updateStats(){
 function renderGrid(){
   let cards=[...collection];
   if(activeType!=='all')cards=cards.filter(c=>getType(c)===activeType);
+  if(activeRarity)cards=cards.filter(c=>(c.rarity||'')===activeRarity);
   const condFilter=document.getElementById('cond-filter')?.value||'';
   if(condFilter) cards=cards.filter(c=>(c.condition||'Near Mint')===condFilter);
   const dupFilter=document.getElementById('dup-filter')?.value||'';
@@ -3479,6 +3487,21 @@ document.getElementById('add-btn').addEventListener('click',()=>{const q=searchI
 searchInp.addEventListener('keydown',e=>{if(e.key==='Escape'){ hideSuggestions(); clearAddQueue(); }if(e.key==='Enter'&&currentSuggestions.length>0)queueSuggestion(0);});
 document.addEventListener('mousedown',e=>{if(!e.target.closest('#search-wrap')&&!e.target.closest('#suggestions')&&!e.target.closest('#add-basket-bar'))hideSuggestions();});
 document.querySelectorAll('.fpill').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.fpill').forEach(b=>b.classList.remove('active'));btn.classList.add('active');activeType=btn.dataset.type;renderGrid();}));
+
+function setCollectionRarity(r){
+  activeRarity = r;
+  document.querySelectorAll('#collection-rarity-row .rar-pill').forEach(b=>b.classList.toggle('active', b.dataset.colRarity===r));
+  renderGrid();
+}
+
+function updateCollectionRarityPills(){
+  const rarities = [...new Set(collection.map(c=>c.rarity).filter(Boolean))].sort();
+  const row = document.getElementById('collection-rarity-row');
+  if(!row) return;
+  row.innerHTML = '<span class="filter-label">Rarity</span><button class="rar-pill'+(activeRarity===''?' active':'')+'" data-col-rarity="" onclick="setCollectionRarity(\'\')">All</button>' +
+    rarities.map(r=>`<button class="rar-pill${activeRarity===r?' active':''}" data-col-rarity="${r}" onclick="setCollectionRarity('${r.replace(/'/g,"\\'")}')">
+      ${r.replace(/\s*\([^)]+\)/,'').trim()}</button>`).join('');
+}
 document.getElementById('sort-select').addEventListener('change',e=>{activeSort=e.target.value;renderGrid();});
 
 /* ══ PORTFOLIO VALUE GRAPH ══ */
@@ -4134,11 +4157,12 @@ async function loadGallery(page=1){
   const g=document.getElementById('gal-grid');
   g.innerHTML=Array(GAL_PG).fill(0).map(()=>'<div><div class="skel-card"></div><div class="skel-info"></div></div>').join('');
   try{
-    let q;
+    let q = '';
     if(_galType === 'trainer') q='supertype:Trainer';
     else if(_galType === 'energy') q='supertype:Energy';
-    else { q='supertype:Pokemon'; if(_galType && _galType !== 'all') q+=` types:${_galType}`; }
-    if(setId) q+=` set.id:${setId}`;
+    else if(_galType && _galType !== 'all') q=`supertype:Pokemon types:${_galType}`;
+    // When 'all', no supertype filter — shows Pokémon, Trainers AND Energy
+    if(setId) q += (q ? ' ' : '') + `set.id:${setId}`;
     if(rarity === 'Black White Rare'){
       q += ` (rarity:"Black White Rare" OR name:Victini)`;
     } else if(rarity){
@@ -4648,7 +4672,15 @@ function setGalLang(lang){
   _tcgdexSets = [];
   _setsLoaded = false;
   // Reset and reload
-  if(lang === 'en'){
+  if(lang === 'all'){
+    // Show all sets: EN + JA + CN combined
+    document.getElementById('gal-all-browser').style.display = 'none';
+    document.getElementById('gal-set-browser').style.display = '';
+    document.getElementById('gal-card-browser').style.display = 'none';
+    document.getElementById('gal-view-sets-btn').classList.add('active');
+    document.getElementById('gal-view-all-btn').classList.remove('active');
+    loadAllLanguageSets();
+  } else if(lang === 'en'){
     document.getElementById('gal-all-browser').style.display = 'none';
     document.getElementById('gal-set-browser').style.display = '';
     document.getElementById('gal-card-browser').style.display = 'none';
@@ -4672,7 +4704,59 @@ function setGalLang(lang){
   // Note: _setsLoaded is set to true inside loadSets/loadTcgdexSets when done
 }
 
-// Static lookup: TCGdex set ID -> EN name + logo from TCGcollector
+async function loadAllLanguageSets(){
+  showSetSkeletons();
+  // Load EN sets if not already loaded
+  if(!_allSets.length){
+    try {
+      const res = await fetch(`${API}/sets?pageSize=250&orderBy=-releaseDate`);
+      const data = await res.json();
+      _allSets = data.data || [];
+    } catch(e){}
+  }
+  // Load JA sets if not loaded
+  if(!_tcgdexSets.length){
+    try {
+      const res = await fetch('https://api.tcgdex.net/v2/ja/sets');
+      const sets = await res.json();
+      _tcgdexSets = sets.filter(s => JA_SET_LOOKUP[s.id] || JA_SET_DATES[s.id]);
+    } catch(e){}
+  }
+  // Build combined list with language tags
+  const combined = [];
+  // EN sets
+  _allSets.forEach(s => combined.push({...s, _lang:'en'}));
+  // JA sets
+  _tcgdexSets.forEach(s => {
+    const info = JA_SET_LOOKUP[s.id];
+    if(info) combined.push({id:s.id, name:info.name, series:'Japanese', releaseDate:JA_SET_DATES[s.id]||'', images:{logo:info.logo}, _lang:'ja'});
+  });
+  // CN sets
+  Object.entries(CN_SET_IDS).forEach(([id, info]) => {
+    combined.push({id, name:info.name, series:'Chinese', releaseDate:info.date||'', images:{logo:info.logo||''}, _lang:'zh-cn'});
+  });
+  // Sort by release date desc
+  combined.sort((a,b) => (b.releaseDate||'').localeCompare(a.releaseDate||''));
+  renderAllLangSetGrid(combined);
+}
+
+function renderAllLangSetGrid(sets){
+  const grid = document.getElementById('gal-set-grid');
+  if(!grid) return;
+  const langFlag = {en:'🇬🇧', ja:'🇯🇵', 'zh-cn':'🇨🇳'};
+  grid.innerHTML = sets.map(s => {
+    const logo = s.images?.logo || '';
+    const flag = langFlag[s._lang] || '';
+    return `<div class="set-card" onclick="${s._lang==='en'?`openSetView('${s.id}')`:s._lang==='zh-cn'?`openCnSetView('${s.id}')`:``}" style="${!s._lang||s._lang==='ja'?'cursor:default;opacity:.7':''}">>
+      <div class="set-card-logo">${logo?`<img src="${logo}" alt="${s.name}" loading="lazy">`:'<div class="set-card-placeholder"></div>'}</div>
+      <div class="set-card-info">
+        <div class="set-card-name">${s.name}</div>
+        <div class="set-card-meta">${flag} ${s.series||''} · ${s.releaseDate||''}</div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('gal-set-count').textContent = sets.length + ' sets';
+}
 // Logos sourced from tcgcollector.com
 const JA_SET_LOOKUP = {
   // Mega Evolution Era (2025–2026)
@@ -5438,9 +5522,9 @@ function renderTcgcGrid(rarity=''){
   g.innerHTML = filtered.map(c => {
     const i = cards.indexOf(c);
     const inVault = collection.some(x => x.id === 'tcgc-'+c.tcgcId);
-    const rarityShort = c.rarity.replace(/\s*\([^)]+\)/,'').trim();
-    return `<div class="pcard${inVault?' pcard-owned':''}" onmousemove="holoMove(event,this)" onmouseleave="holoReset(this)">
-      <div class="pcard-inner" onclick="openTcgcViewer(${i})">
+    const isSelected = _galMultiSelected.has('tcgc-'+c.tcgcId);
+    return `<div class="pcard${inVault?' pcard-owned':''}${isSelected?' pcard-selected':''}" data-tcgc-id="${c.tcgcId}" onmousemove="${_galMultiSelect?'':'holoMove(event,this)'}" onmouseleave="${_galMultiSelect?'':'holoReset(this)'}">
+      <div class="pcard-inner" onclick="${_galMultiSelect?`toggleCardSelection(event,'tcgc-'+this.closest('.pcard').dataset.tcgcId,'all')`:`openTcgcViewer(${i})`}">
         <img class="pcard-img" src="${c.image}" alt="${c.name}" loading="lazy" onerror="this.style.opacity='0.3'">
         <div class="holo-rainbow"></div><div class="holo-shimmer"></div><div class="holo-glare"></div>
         ${inVault
@@ -8436,48 +8520,9 @@ function openResizeModal(idx){
   const img = new Image();
   img.onload = () => {
     _resizeImg = img;
-    // Set canvas to slot aspect ratio, capped so it always fits in the modal
-    // Use the image's own aspect ratio so it always fills the canvas edge to edge
-    const tgtRatio = img.width / img.height;
-    const wrap = document.getElementById('resize-wrap');
-    const modalInner = document.querySelector('.resize-modal-inner');
-    // Cap to the modal inner width (accounts for padding on mobile)
-    const maxW = Math.min(wrap.clientWidth || 500, modalInner ? modalInner.clientWidth - 2 : 500);
-    const maxH = Math.min(window.innerHeight * 0.45, 480);
-    let displayW, displayH;
-    if(maxW / tgtRatio <= maxH){
-      displayW = maxW;
-      displayH = maxW / tgtRatio;
-    } else {
-      displayH = maxH;
-      displayW = maxH * tgtRatio;
-    }
-    // Never exceed available width
-    if(displayW > maxW){ displayW = maxW; displayH = displayW / tgtRatio; }
-    const canvas = document.getElementById('resize-canvas');
-    canvas.width  = displayW;
-    canvas.height = displayH;
-    canvas.style.width  = displayW + 'px';
-    canvas.style.height = displayH + 'px';
-    wrap.style.width = '100%'; // always fill modal width, don't overflow
-
-    // Initial fit: show the whole image (fit-to-canvas), user zooms in to crop
-    const scaleToFitX = displayW / img.width;
-    const scaleToFitY = displayH / img.height;
-    _rz.scale = Math.min(scaleToFitX, scaleToFitY);
-    // Centre it
-    _rz.x = (displayW - img.width  * _rz.scale) / 2;
-    _rz.y = (displayH - img.height * _rz.scale) / 2;
-
-    drawResizeCanvas();
-    // Sync slider to actual initial scale
-    const initPct = Math.round(_rz.scale * 100);
-    const slider = document.getElementById('resize-zoom-slider');
-    const label  = document.getElementById('resize-zoom-pct');
-    if(slider){ slider.min = Math.max(1, Math.round(initPct * 0.5)); slider.max = Math.round(initPct * 8); slider.value = initPct; }
-    if(label)  label.textContent = initPct + '%';
     document.getElementById('resize-undo-btn').style.display = 'none';
     _resizePreviousDataUrl = null;
+    document.querySelector('.resize-confirm').textContent = 'Apply';
     // Open modal first so layout is available for measurement
     document.getElementById('resize-modal').classList.add('open');
     requestAnimationFrame(() => {
@@ -9002,20 +9047,36 @@ async function generatePDF(){
 
           try {
             document.getElementById('export-progress').textContent = `Capturing spread ${spread+1}...`;
-            // Replace card img src with weserv proxy URLs before capture so html2canvas can read them
+            // Replace card img src with exportable URLs before capture
             const cardImgs = binderEl.querySelectorAll('img');
             const origSrcs = [];
-            cardImgs.forEach(img => {
+            const toDataURL = src => new Promise(resolve => {
+              const xi = new Image(); xi.crossOrigin = 'anonymous';
+              xi.onload = () => {
+                const xc = document.createElement('canvas');
+                xc.width = xi.width; xc.height = xi.height;
+                xc.getContext('2d').drawImage(xi, 0, 0);
+                resolve(xc.toDataURL('image/jpeg', 0.8));
+              };
+              xi.onerror = () => resolve(null);
+              xi.src = src;
+            });
+            for(const img of cardImgs){
               origSrcs.push(img.src);
-              if(img.src && img.src.includes('pokemontcg.io')){
+              if(!img.src) continue;
+              if(img.src.includes('pokemontcg.io') || img.src.includes('tcgcollector.com') || img.src.includes('tcgdex.net')){
                 const stripped = img.src.replace(/^https?:\/\//, '');
                 img.src = `https://images.weserv.nl/?url=${encodeURIComponent(stripped)}&w=200&output=jpg&q=80`;
+              } else if(img.src.startsWith('blob:')){
+                const dataUrl = await toDataURL(img.src);
+                if(dataUrl) img.src = dataUrl;
               }
-            });
-            // Wait for proxied images to load
+            }
+            // Wait for all images to load
             await Promise.all([...cardImgs].map(img => new Promise(r => {
-              if(img.complete) return r();
+              if(img.complete && img.naturalHeight > 0) return r();
               img.onload = r; img.onerror = r;
+              setTimeout(r, 3000);
             })));
             const canvas = await html2canvas(binderEl, {
               backgroundColor: '#0d0b1a',
@@ -9189,7 +9250,7 @@ function switchCollectionView(v){
   document.getElementById('cview-sets-btn').style.color  = v==='sets'  ? 'var(--text)' : 'var(--muted)';
   document.getElementById('cview-cards-panel').style.display = v==='cards' ? '' : 'none';
   document.getElementById('cview-sets-panel').style.display  = v==='sets'  ? '' : 'none';
-  document.getElementById('filter-row').style.display = v==='cards' && collection.length ? 'block' : 'none';
+  document.getElementById('filter-row').style.display = v==='cards' && collection.length ? 'flex' : 'none';
   if(v === 'sets') renderCollectionSets();
 }
 
