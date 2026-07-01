@@ -1932,6 +1932,14 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
         </div>
         <span class="page-info" id="gal-page-info"></span>
       </div>
+      <!-- Row 1b: search within set -->
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input id="gal-card-search" type="text" placeholder="Search cards in this set..." autocomplete="off"
+          style="flex:1;padding:8px 14px;background:var(--surface);border:0.5px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;"
+          oninput="filterSetCards(this.value)">
+        <button onclick="document.getElementById('gal-card-search').value='';filterSetCards('')"
+          style="padding:8px 12px;border-radius:8px;border:0.5px solid var(--border2);background:transparent;color:var(--muted);font-family:var(--font);font-size:12px;cursor:pointer;">✕</button>
+      </div>
       <!-- Row 2: type pills -->
       <div id="gal-type-pills" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
         <span class="pills-label">Type</span>
@@ -4078,10 +4086,11 @@ function backToSetGrid(){
   // Restore default rarity pills
   const rarPills = document.getElementById('gal-rarity-pills');
   if(rarPills) rarPills.innerHTML = '<span class="pills-label">Rarity</span><button class="rar-pill active" data-rarity="" onclick="setGalRarity(\'\')">All</button>';
+  const cardSearch = document.getElementById('gal-card-search');
+  if(cardSearch) cardSearch.value = '';
   if(_galLang === 'all'){
     loadAllLanguageSets();
-  } else if(_galLang !== 'en'){
-    if(_galLang === 'zh-cn') loadCnSets();
+  } else if(_galLang !== 'en'){    if(_galLang === 'zh-cn') loadCnSets();
     else loadTcgdexSets(_galLang);
   } else {
     const q = document.getElementById('gal-set-search').value.toLowerCase();
@@ -5546,6 +5555,26 @@ function renderTcgcGrid(rarity=''){
   }).join('');
   initUpscaleObserver();
   staggerCards(document.getElementById('gal-grid'));
+}
+
+function filterSetCards(q){
+  q = (q||'').trim().toLowerCase();
+  if(!_activeSetLang || _activeSetLang === 'en'){
+    const g = document.getElementById('gal-grid');
+    if(!g) return;
+    const filtered = q ? galCards.filter(c => c.name.toLowerCase().includes(q) || (c.number||'').toLowerCase().includes(q)) : galCards;
+    if(!filtered.length){ g.innerHTML = '<div class="empty-state"><div class="empty-state-icon">◎</div><div class="empty-state-title">No cards match "'+q+'"</div></div>'; return; }
+    const orig = galCards; galCards = filtered; renderGallery(); galCards = orig;
+  } else {
+    const rarity = document.querySelector('#gal-rarity-pills .rar-pill.active')?.dataset?.rarity || '';
+    const cards = window._tcgcCards || [];
+    const byRarity = rarity ? cards.filter(c => c.rarity === rarity) : cards;
+    const filtered = q ? byRarity.filter(c => c.name.toLowerCase().includes(q) || (c.number||'').toLowerCase().includes(q)) : byRarity;
+    const g = document.getElementById('gal-grid');
+    if(!g) return;
+    if(!filtered.length){ g.innerHTML = '<div class="empty-state"><div class="empty-state-icon">◎</div><div class="empty-state-title">No cards match "'+q+'"</div></div>'; return; }
+    const orig = window._tcgcCards; window._tcgcCards = filtered; renderTcgcGrid(rarity); window._tcgcCards = orig;
+  }
 }
 
 function setTcgcRarity(rarity){
