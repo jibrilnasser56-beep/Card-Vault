@@ -6211,7 +6211,7 @@ async function galSearchALL(query, page){
         <div class="pcard-inner" onclick="openTcgcViewerCard('${c.tcgcId}','${c.name}','${(c.image||'').replace(/'/g,"\\'")}','${c.rarity||''}','${c.number||''}')">
           <img class="pcard-img" src="${c.image||''}" alt="${c.name}" loading="lazy" onerror="this.style.opacity='0.3'">
           <div class="holo-rainbow"></div><div class="holo-shimmer"></div><div class="holo-glare"></div>
-          ${inVault?`<div class="pcard-owned-badge"><span>&#10003;</span></div>`:`<div class="card-add-badge" onclick="event.stopPropagation();quickAddTcgcById('${c.tcgcId}','${c.name}','${(c.image||'').replace(/'/g,"\\'")}','${c.rarity||''}','${c.number||''}')">+</div>`}
+          ${inVault?`<div class="pcard-owned-badge"><span>&#10003;</span></div>`:`<div class="card-add-badge" onclick="event.stopPropagation();quickAddTcgcById('${c.tcgcId}','${c.name}','${(c.image||'').replace(/'/g,"\\'")}','${c.rarity||''}','${c.number||''}','chinese')">+</div>`}
         </div>
         <div class="card-info">
           <div class="card-name-text">${c.name}</div>
@@ -6232,7 +6232,7 @@ function openTcgcViewerCard(tcgcId, name, image, rarity, number){
 }
 
 // Quick-add a TCGC card by raw data (used in all-language search results)
-function quickAddTcgcById(tcgcId, name, image, rarity, number){
+function quickAddTcgcById(tcgcId, name, image, rarity, number, lang='japanese'){
   const card = {
     id: 'tcgc-'+tcgcId,
     name, number, rarity,
@@ -6242,7 +6242,7 @@ function quickAddTcgcById(tcgcId, name, image, rarity, number){
   };
   addCard(card);
   // Enrich price in background
-  fetchPriceCharting(name, number, 'japanese').then(p => {
+  fetchPriceCharting(name, number, lang).then(p => {
     if(!p) return;
     const existing = collection.find(c => c.id === 'tcgc-'+tcgcId);
     if(existing && !existing.price) { existing.price = p; save(); updateStats(); }
