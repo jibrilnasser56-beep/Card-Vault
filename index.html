@@ -5556,6 +5556,8 @@ function renderTcgcGrid(rarity=''){
     const i = cards.indexOf(c);
     const inVault = collection.some(x => x.id === 'tcgc-'+c.tcgcId);
     const rarityShort = c.rarity.replace(/\s*\([^)]+\)/,'').trim();
+    // Show PriceCharting price if available, fall back to TCGcollector price
+    const displayPrice = c._pcPrice ? `£${c._pcPrice.toFixed(2)}` : (c.price && c.price !== '-' ? c.price : '');
     return `<div class="pcard${inVault?' pcard-owned':''}" data-tcgc-id="${c.tcgcId}" onmousemove="holoMove(event,this)" onmouseleave="holoReset(this)">
       <div class="pcard-inner" onclick="tcgcCardClick(event,${i})">
         <img class="pcard-img" src="${c.image}" alt="${c.name}" loading="lazy" onerror="this.style.opacity='0.3'">
@@ -5566,12 +5568,50 @@ function renderTcgcGrid(rarity=''){
       </div>
       <div class="card-info">
         <div class="card-name-text">${c.name}</div>
-        <div class="card-set-text">#${c.number}${c.price ? ' · '+c.price : ''}</div>
+        <div class="card-set-text" data-tcgc-price="${c.tcgcId}">#${c.number}${displayPrice ? ' · '+displayPrice : ''}</div>
       </div>
     </div>`;
   }).join('');
   initUpscaleObserver();
   staggerCards(document.getElementById('gal-grid'));
+  // Enrich prices from PriceCharting in background
+  enrichTcgcGridPrices();
+}
+
+let _enrichingSet = null;
+async function enrichTcgcGridPrices(){
+  const cards = window._tcgcCards;
+  const setId = window._tcgcSetId;
+  if(!cards || !cards.length || !setId) return;
+  if(_enrichingSet === setId) return; // already running for this set
+  _enrichingSet = setId;
+
+  const isCn = /^\d+$/.test(setId);
+  const lang = isCn ? 'chinese' : 'japanese';
+  const slugMap = isCn ? PC_CN_SLUGS : PC_JA_SLUGS;
+  const slug = slugMap[setId];
+  if(!slug){ _enrichingSet = null; return; } // no mapping for this set
+
+  const setMap = await fetchSetPagePrices(slug, lang);
+  if(!setMap || !Object.keys(setMap).length){ _enrichingSet = null; return; }
+
+  let updated = false;
+  cards.forEach(c => {
+    if(c._pcPrice) return; // already enriched
+    const cleanNum = (c.number||'').replace(/^0+/,'').split('/')[0].replace(/^0+/,'');
+    const priceUSD = setMap[cleanNum];
+    if(priceUSD){
+      c._pcPrice = Math.round(priceUSD * 0.79 * 100) / 100;
+      // Update the DOM price label if the card is currently rendered
+      const el = document.querySelector(`[data-tcgc-price="${c.tcgcId}"]`);
+      if(el){
+        el.textContent = `#${c.number} · £${c._pcPrice.toFixed(2)}`;
+      }
+      updated = true;
+    }
+  });
+
+  _enrichingSet = null;
 }
 
 function filterSetCards(q){
