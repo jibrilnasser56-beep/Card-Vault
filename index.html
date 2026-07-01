@@ -5633,7 +5633,7 @@ async function refreshJaPrices(manual=false){
   for(const card of missing){
     const isCn = /^\d+$/.test(card.set?.id || '');
     const lang = isCn ? 'chinese' : 'japanese';
-    const price = await fetchPriceCharting(card.name, card.number, lang);
+    const price = await fetchPriceCharting(card.name, card.number, lang, card.set?.id || '');
     if(price){
       card.price = price;
       updated++;
@@ -5679,24 +5679,79 @@ const PC_JA_SLUGS = {
   'SM2':'ultra-sun','SM1S':'collection-sun','SM1M':'collection-moon',
 };
 
-// CN set slug mapping — numeric ID to PriceCharting slug
+// CN set ID (TCGcollector numeric) -> PriceCharting slug
 const PC_CN_SLUGS = {
-  '11817':'gem-pack-5','11812':'gem-pack-5','11808':'gem-pack-5',
-  // Map by set name patterns — newer SV era sets
+  '11808':'gem-pack-5',   // Gem Pack Vol 5
+  '11796':'gem-pack-4',   // Gem Pack Vol 4
+  '11789':'gem-pack-3',   // Gem Pack Vol 3
+  '11777':'gem-pack-2',   // Gem Pack Vol 2
+  '11752':'gem-pack',     // Gem Pack Vol 1
+  '11817':'gem-pack-5',   // Terastal Gathering (uses gem-pack-5 on PC)
+  // Scarlet & Violet era
+  '11802':'csv9c',        // Brilliant Illusions → CSV9C
+  '11790':'csv5c',        // True Mystery → CSV5C  
+  '11792':'csv4c',        // Blade Awakening → CSV4C
+  '11812':'csv3c',        // Stellar Crystal → CSV3C
+  '11779':'csm2cc',       // CSM2cC
+  '11778':'csm2bc',       // CSM2bC
+  '11776':'csm2ac',       // CSM2aC
+  '11766':'cs5ac',        // CS5aC
+  '11753':'cs4bc',        // CS4bC
+  '11750':'cs4ac',        // CS4aC
+  '11762':'151-collect',  // 151 Collect
+  '11700':'promo',        // Chinese Promo (SM-P era)
 };
+
+const _pcSetPageCache = {}; // cache {slug: {number: priceUSD}}
+
+async function fetchSetPagePrices(slug, lang){
+  if(_pcSetPageCache[slug]) return _pcSetPageCache[slug];
+  try {
+    const prefix = lang === 'chinese' ? 'pokemon-chinese-' : 'pokemon-japanese-';
+    const url = `https://www.pricecharting.com/console/${prefix}${slug}`;
+    const res = await fetch(TCGC_PROXY + '?url=' + encodeURIComponent(url));
+    if(!res.ok) return null;
+    const html = await res.text();
+    const rows = [...html.matchAll(/<tr[^>]*id="product-\d+"[^>]*>([\s\S]*?)<\/tr>/g)];
+    const map = {};
+    for(const [, row] of rows){
+      const numM = row.match(/#(\d+)/);
+      const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
+      if(numM && priceM){
+        const num = numM[1].replace(/^0+/,''); // strip leading zeros
+        const price = parseFloat(priceM[1].replace(',',''));
+        if(price > 0 && !map[num]) map[num] = price; // keep first (highest sorted) price per number
+      }
+    }
+    _pcSetPageCache[slug] = map;
+    return map;
+  } catch(e){ return null; }
+}
 
 const _pcSetCache = {}; // cache set page results {number: price}
 
-async function fetchPriceCharting(cardName, cardNumber, lang='japanese'){
-  const setId = ''; // passed separately by caller via card object
-  const cacheKey = `${lang}:${cardName}:${cardNumber||''}`;
+async function fetchPriceCharting(cardName, cardNumber, lang='japanese', setId=''){
+  const cacheKey = `${lang}:${cardName}:${cardNumber||''}:${setId||''}`;
   if(_pcPriceCache[cacheKey] !== undefined) return _pcPriceCache[cacheKey];
 
   try {
     let priceUSD = null;
 
-    // Strategy 1: if we have a number, try name+number search for precision
+    // Strategy 0: set page lookup by number (most accurate for CN/JA)
     if(cardNumber && cardNumber !== '?'){
+      const slugMap = lang === 'chinese' ? PC_CN_SLUGS : PC_JA_SLUGS;
+      const slug = setId ? slugMap[setId] : null;
+      if(slug){
+        const setMap = await fetchSetPagePrices(slug, lang);
+        if(setMap){
+          const cleanNum = cardNumber.replace(/^0+/,'').split('/')[0].replace(/^0+/,'');
+          priceUSD = setMap[cleanNum] || null;
+        }
+      }
+    }
+
+    // Strategy 1: name + number search
+    if(!priceUSD && cardNumber && cardNumber !== '?'){
       const cleanName = cardName.replace(/\s*(ex|EX|GX|V|VMAX|VSTAR|e)\s*$/, '').trim();
       const q = encodeURIComponent(`${cleanName} #${cardNumber} ${lang} pokemon`);
       const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices`;
@@ -5710,9 +5765,6 @@ async function fetchPriceCharting(cardName, cardNumber, lang='japanese'){
           if(!row.includes(`#${cardNumber}`)) continue;
           const nameM = row.match(/class="title"[\s\S]*?<a[^>]*>\s*([^<]+?)\s*<\/a>/);
           if(!nameM) continue;
-          const rowName = nameM[1].trim().toLowerCase();
-          const cleanTarget = cardName.toLowerCase().replace(/\s*(ex|EX|GX|V|VMAX|VSTAR|e)\s*$/, '').trim();
-          if(!rowName.includes(cleanTarget.split(' ')[0])) continue; // at least first word must match
           const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
           if(!priceM) continue;
           priceUSD = parseFloat(priceM[1].replace(',',''));
@@ -5760,6 +5812,7 @@ async function fetchPriceCharting(cardName, cardNumber, lang='japanese'){
     return null;
   }
 }
+
 async function quickAddTcgc(e, cardIndex){
   e.stopPropagation();
   const c = window._tcgcCards?.[cardIndex];
@@ -6232,17 +6285,17 @@ function openTcgcViewerCard(tcgcId, name, image, rarity, number){
 }
 
 // Quick-add a TCGC card by raw data (used in all-language search results)
-function quickAddTcgcById(tcgcId, name, image, rarity, number, lang='japanese'){
+function quickAddTcgcById(tcgcId, name, image, rarity, number, lang='japanese', setId=''){
   const card = {
     id: 'tcgc-'+tcgcId,
     name, number, rarity,
     images: { small: image, large: image },
+    set: { id: setId },
     _source: 'tcgc',
     price: 0,
   };
   addCard(card);
-  // Enrich price in background
-  fetchPriceCharting(name, number, lang).then(p => {
+  fetchPriceCharting(name, number, lang, setId).then(p => {
     if(!p) return;
     const existing = collection.find(c => c.id === 'tcgc-'+tcgcId);
     if(existing && !existing.price) { existing.price = p; save(); updateStats(); }
