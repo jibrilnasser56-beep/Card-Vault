@@ -4249,6 +4249,8 @@ async function loadGallery(page=1){
       document.getElementById('gal-page-info').textContent = galTotal.toLocaleString()+' cards';
       document.getElementById('gal-pagination').style.display = 'none';
       updateCompletionBar();
+      // Enrich missing prices from PriceCharting for new sets not yet in pokemontcg.io pricing
+      if(allCards.some(c => !getPrice(c))) enrichEnSetPrices(setId, allCards);
     } else {
       // All Cards / no set — keep pagination
       const res=await fetch(`${API}/cards?q=${encodeURIComponent(q)}&pageSize=${GAL_PG}&page=${page}&orderBy=number`);
@@ -4293,7 +4295,7 @@ function renderGallery(){
       <div class="card-info">
         <div class="card-name-text">${c.name}</div>
         <div class="card-set-text">${c.set?.name||''} · #${c.number||'?'}</div>
-        <div class="card-price-row"><span class="card-price-val">£${getPrice(c).toFixed(2)}</span></div>
+        <div class="card-price-row"><span class="card-price-val">£${(getPrice(c)||c._pcPrice||0).toFixed(2)}</span></div>
       </div>
     </div>`;
   }).join('');
@@ -5588,6 +5590,68 @@ function renderTcgcGrid(rarity=''){
   staggerCards(document.getElementById('gal-grid'));
   // Enrich prices from PriceCharting in background
   enrichTcgcGridPrices();
+}
+
+let _enrichingEnSet = null;
+async function enrichEnSetPrices(setId, cards){
+  if(_enrichingEnSet === setId) return;
+  _enrichingEnSet = setId;
+
+  // Get the set name for the search query
+  const set = _allSets.find(s => s.id === setId);
+  const setName = set?.name || setId;
+  const priceMap = {}; // number -> priceGBP
+
+  for(const page of [1, 2]){
+    try {
+      const q = encodeURIComponent(`${setName} pokemon`);
+      const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices&page=${page}`;
+      const res = await fetch(TCGC_PROXY + '?url=' + encodeURIComponent(url));
+      if(!res.ok) break;
+      const html = await res.text();
+      const rowRegex = /<tr[^>]*id="product-\d+"[^>]*>([\s\S]*?)<\/tr>/g;
+      let match, hasRows = false;
+      while((match = rowRegex.exec(html)) !== null){
+        hasRows = true;
+        const row = match[1];
+        const numM = row.match(/#(\d+)/);
+        const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
+        if(!numM || !priceM) continue;
+        const num = numM[1].replace(/^0+/,'');
+        const priceUSD = parseFloat(priceM[1].replace(',',''));
+        if(priceUSD > 0 && !priceMap[num]){
+          priceMap[num] = Math.round(priceUSD * 0.79 * 100) / 100;
+        }
+      }
+      if(!hasRows) break;
+      await new Promise(r => setTimeout(r, 1100));
+    } catch(e){ break; }
+  }
+
+  // Apply prices to cards missing them, update DOM
+  let updated = false;
+  cards.forEach(c => {
+    if(getPrice(c) > 0) return; // already has price from pokemontcg.io
+    const num = (c.number||'').replace(/^0+/,'');
+    if(priceMap[num]){
+      // Store as a temporary price on the card object for display
+      c._pcPrice = priceMap[num];
+      // Update the price display in the rendered grid
+      const cardEls = document.querySelectorAll('#gal-grid .pcard');
+      cardEls.forEach(el => {
+        const img = el.querySelector('.pcard-img');
+        if(img?.alt === c.name){
+          const priceEl = el.querySelector('.card-price-val');
+          if(priceEl && priceEl.textContent === '£0.00'){
+            priceEl.textContent = `£${priceMap[num].toFixed(2)}`;
+          }
+        }
+      });
+      updated = true;
+    }
+  });
+
+  _enrichingEnSet = null;
 }
 
 let _enrichingSet = null;
