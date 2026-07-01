@@ -4217,10 +4217,11 @@ async function loadGallery(page=1){
   const g=document.getElementById('gal-grid');
   g.innerHTML=Array(GAL_PG).fill(0).map(()=>'<div><div class="skel-card"></div><div class="skel-info"></div></div>').join('');
   try{
-    let q;
+    let q = '';
     if(_galType === 'trainer') q='supertype:Trainer';
     else if(_galType === 'energy') q='supertype:Energy';
-    else { q='supertype:Pokemon'; if(_galType && _galType !== 'all') q+=` types:${_galType}`; }
+    else if(_galType && _galType !== 'all') q=`supertype:Pokemon types:${_galType}`;
+    // When 'all', no supertype filter — shows Pokémon, Trainers AND Energy
     if(setId) q+=` set.id:${setId}`;
     if(rarity === 'Black White Rare'){
       q += ` (rarity:"Black White Rare" OR name:Victini)`;
@@ -6346,7 +6347,7 @@ async function galSearchALL(query, page){
   const q = query.toLowerCase();
 
   // Run EN search via API
-  const enPromise = fetch(`${API}/cards?q=${encodeURIComponent('name:"'+query+'*"')}&pageSize=48&orderBy=-set.releaseDate,number&select=id,name,number,rarity,images,set,tcgplayer`)
+  const enPromise = fetch(`${API}/cards?q=${encodeURIComponent('name:"'+query+'*"')}&pageSize=48&orderBy=-set.releaseDate,number&select=id,name,number,rarity,images,set,cardmarket,tcgplayer`)
     .then(r => r.json()).then(d => d.data || []).catch(() => []);
 
   // JA search — use existing index only (prewarm has rendering side effects, don't trigger here)
@@ -6486,7 +6487,7 @@ async function getJaNameFromEN(enName){ return null; } // kept for compatibility
 async function galSearchEN(query, page){
   const PAGE_SIZE = 48;
   const q = encodeURIComponent('name:"' + query + '*"');
-  const res = await fetch(API+'/cards?q='+q+'&pageSize='+PAGE_SIZE+'&page='+page+'&orderBy=-set.releaseDate,number&select=id,name,number,rarity,images,set,tcgplayer');
+  const res = await fetch(API+'/cards?q='+q+'&pageSize='+PAGE_SIZE+'&page='+page+'&orderBy=-set.releaseDate,number&select=id,name,number,rarity,images,set,cardmarket,tcgplayer');
   const data = await res.json();
   const cards = data.data || [];
   _galSearchTotal = data.totalCount || 0;
