@@ -4746,6 +4746,18 @@ function setGalLang(lang){
     runGalSearch(1);
     return;
   }
+  if(preservedQuery && lang === 'all'){
+    // For all-languages mode with active search, show All Cards and run combined search
+    document.getElementById('gal-all-browser').style.display = '';
+    document.getElementById('gal-set-browser').style.display = 'none';
+    document.getElementById('gal-card-browser').style.display = 'none';
+    document.getElementById('gal-view-sets-btn').classList.remove('active');
+    document.getElementById('gal-view-all-btn').classList.add('active');
+    const inp = document.getElementById('gal-search-input');
+    if(inp) inp.value = preservedQuery;
+    runGalSearch(1);
+    return;
+  }
   // Reset and reload
   if(lang === 'all'){
     document.getElementById('gal-all-browser').style.display = 'none';
@@ -6337,18 +6349,15 @@ async function galSearchALL(query, page){
   const enPromise = fetch(`${API}/cards?q=${encodeURIComponent('name:"'+query+'*"')}&pageSize=48&orderBy=-set.releaseDate,number&select=id,name,number,rarity,images,set,tcgplayer`)
     .then(r => r.json()).then(d => d.data || []).catch(() => []);
 
-  // JA search — use existing index without triggering prewarm (prewarm has rendering side effects)
+  // JA search — use existing index only (prewarm has rendering side effects, don't trigger here)
   const jaCards = Object.values(_jaCardIndex).flat().filter(c =>
     c.name && c.name.toLowerCase().includes(q)
   );
-  // Trigger prewarm silently only if not ready (no rendering callbacks will fire for 'all' mode)
-  if(!_jaIndexReady) jaIndexPrewarm();
 
-  // CN search
+  // CN search — use existing index only
   const cnCards = Object.values(_cnCardIndex || {}).flat().filter(c =>
     c.name && c.name.toLowerCase().includes(q)
   );
-  if(!_cnIndexReady) cnIndexPrewarm();
 
   const enCards = await enPromise;
 
@@ -10029,7 +10038,7 @@ async function loadCommunityData(){
   try {
     const [vaultsRes, ownsRes] = await Promise.all([
       sbFetch('vaults?select=id,username,card_count,total_value,top_card&order=card_count.desc&limit=50'),
-      sbFetch('card_owns?select=card_id,card_name,card_image')
+      sbFetch('card_owns?select=card_id,card_name,card_image&limit=1000')
     ]);
     renderTopVaults(vaultsRes || []);
     _popularCards = buildPopularCards(ownsRes || []);
@@ -10044,8 +10053,9 @@ async function loadCommunityData(){
     await enrichPopularCardPrices();
 
   } catch(e) {
+    console.error('Community load error:', e);
     document.getElementById('community-vaults-list').innerHTML =
-      '<div style="text-align:center;padding:3rem;color:#f87171;font-size:13px;">Could not load community data — check your connection</div>';
+      `<div style="text-align:center;padding:3rem;color:#f87171;font-size:13px;">Could not load community data — ${e.message||'check your connection'}</div>`;
   }
 }
 
