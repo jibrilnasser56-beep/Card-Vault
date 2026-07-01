@@ -5623,9 +5623,11 @@ function openTcgcViewer(cardIndex){
 const _pcPriceCache = {}; // session cache to avoid repeat lookups
 
 async function refreshJaPrices(manual=false){
-  const missing = collection.filter(c => c._source === 'tcgc' && (!c.price || c.price === 0));
+  // Include cards with no price OR a suspiciously low price (under £0.10)
+  // This catches cards that got a bad TCGcollector price or no price at all
+  const missing = collection.filter(c => c._source === 'tcgc' && (!c.price || c.price < 0.10));
   if(!missing.length){
-    if(manual) showToast('All JA/CN cards already have prices');
+    if(manual) showToast('All JA/CN cards already have prices — use manual edit to adjust individual prices');
     return;
   }
   if(manual) showToast(`💰 Looking up prices for ${missing.length} card${missing.length!==1?'s':''}...`);
@@ -5636,7 +5638,6 @@ async function refreshJaPrices(manual=false){
       card.price = price;
       updated++;
     }
-    // Respect PriceCharting rate limit: 1 call per second
     await new Promise(r => setTimeout(r, 1100));
   }
   if(updated){ save(); updateStats(); renderGrid(); }
@@ -5644,52 +5645,48 @@ async function refreshJaPrices(manual=false){
 }
 
 async function fetchPriceCharting(cardName, cardNumber, lang='japanese'){
-  const cacheKey = `${lang}:${cardName}:${cardNumber}`;
+  const cacheKey = `${lang}:${cardName}:${cardNumber||''}`;
   if(_pcPriceCache[cacheKey] !== undefined) return _pcPriceCache[cacheKey];
 
   try {
-    const q = encodeURIComponent(`${cardName} ${lang} pokemon`);
+    // Strip suffixes that may not match PriceCharting names
+    const cleanName = cardName.replace(/\s*(ex|EX|GX|V|VMAX|VSTAR|e)\s*$/, '').trim();
+    const q = encodeURIComponent(`${cleanName} ${lang} pokemon`);
     const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices`;
     const proxyUrl = TCGC_PROXY + '?url=' + encodeURIComponent(url);
     const res = await fetch(proxyUrl);
     if(!res.ok) throw new Error('proxy failed');
     const html = await res.text();
 
-    // Parse product rows
     const rowRegex = /<tr[^>]*id="product-(\d+)"[^>]*>([\s\S]*?)<\/tr>/g;
     let match, bestPrice = null, bestScore = -1;
 
     while((match = rowRegex.exec(html)) !== null){
       const row = match[2];
-      // Extract name
-      const nameM = row.match(/class="title"[\s\S]*?<a[^>]*>([^<]+)<\/a>/);
+      const nameM = row.match(/class="title"[\s\S]*?<a[^>]*>\s*([^<]+?)\s*<\/a>/);
       if(!nameM) continue;
       const rowName = nameM[1].trim().toLowerCase();
       const targetName = cardName.toLowerCase();
+      const cleanTarget = cleanName.toLowerCase();
 
-      // Score: exact name match > contains name
       let score = 0;
-      if(rowName === targetName) score = 3;
-      else if(rowName.startsWith(targetName)) score = 2;
-      else if(rowName.includes(targetName)) score = 1;
+      if(rowName === targetName) score = 4;
+      else if(rowName === cleanTarget) score = 3;
+      else if(rowName.startsWith(cleanTarget)) score = 2;
+      else if(rowName.includes(cleanTarget)) score = 1;
       else continue;
 
-      // Bonus: card number match
-      if(cardNumber && row.includes(`#${cardNumber}`)) score += 2;
+      // Bonus: number match (only if we have a real number)
+      if(cardNumber && cardNumber !== '?' && row.includes(`#${cardNumber}`)) score += 3;
 
-      // Extract ungraded price
       const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
       if(!priceM) continue;
       const priceUSD = parseFloat(priceM[1].replace(',',''));
       if(isNaN(priceUSD) || priceUSD <= 0) continue;
 
-      if(score > bestScore){
-        bestScore = score;
-        bestPrice = priceUSD;
-      }
+      if(score > bestScore){ bestScore = score; bestPrice = priceUSD; }
     }
 
-    // Convert USD to GBP (approximate 0.79 rate)
     const priceGBP = bestPrice ? Math.round(bestPrice * 0.79 * 100) / 100 : null;
     _pcPriceCache[cacheKey] = priceGBP;
     return priceGBP;
