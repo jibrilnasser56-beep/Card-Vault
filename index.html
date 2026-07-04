@@ -171,6 +171,14 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .filter-row{display:flex;gap:8px;margin-bottom:1.25rem;flex-wrap:wrap;align-items:center;}
 .filter-label{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-right:4px;}
 .fpill{font-size:11px;padding:4px 12px;border-radius:999px;border:0.5px solid var(--border2);color:var(--muted);background:transparent;cursor:pointer;font-family:var(--font);transition:all .15s;letter-spacing:.04em;}
+.rarity-scroll-wrap{position:relative;flex:1;min-width:0;}
+.rarity-scroll-wrap::after{content:'';position:absolute;top:0;right:0;bottom:0;width:32px;background:linear-gradient(to right,transparent,var(--bg));pointer-events:none;opacity:0;transition:opacity .2s;}
+.rarity-scroll-wrap.has-overflow::after{opacity:1;}
+.rarity-scroll{display:flex;gap:5px;align-items:center;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;padding-bottom:2px;scroll-behavior:smooth;}
+.rarity-scroll::-webkit-scrollbar{display:none;}
+.rarity-scroll .fpill{flex-shrink:0;white-space:nowrap;}
+.fpill .rar-sym{margin-right:4px;opacity:.75;}
+.fpill.active .rar-sym{opacity:1;}
 .fpill:hover{border-color:var(--accent);color:var(--text);}
 .fpill.active{background:rgba(139,104,212,.18);border-color:var(--accent);color:#c4b0ef;}
 .sort-select{background:var(--surface);border:0.5px solid var(--border2);border-radius:6px;color:var(--muted);font-family:var(--font);font-size:11px;padding:4px 10px;outline:none;cursor:pointer;margin-left:auto;}
@@ -1854,10 +1862,14 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       </select>
       <button id="batch-price-btn" onclick="toggleBatchPriceMode()" style="padding:4px 12px;border-radius:6px;border:0.5px solid #3db87c;background:rgba(61,184,124,.15);color:#3db87c;font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;margin-left:auto;">✎ Edit prices</button>
     </div>
-    <!-- Row 3: rarity filter (populated dynamically) -->
-    <div id="collection-rarity-row" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
-      <span class="filter-label">Rarity</span>
-      <button class="fpill active" data-col-rarity="" onclick="setCollectionRarity('')">All</button>
+    <!-- Row 3: rarity filter (scrollable single row) -->
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="filter-label" style="flex-shrink:0;">Rarity</span>
+      <div class="rarity-scroll-wrap">
+        <div id="collection-rarity-row" class="rarity-scroll">
+          <button class="fpill active" data-col-rarity="" onclick="setCollectionRarity('')">All</button>
+        </div>
+      </div>
     </div>
   </div>
   <div id="cview-cards-panel">
@@ -3498,6 +3510,25 @@ searchInp.addEventListener('keydown',e=>{if(e.key==='Escape'){ hideSuggestions()
 document.addEventListener('mousedown',e=>{if(!e.target.closest('#search-wrap')&&!e.target.closest('#suggestions')&&!e.target.closest('#add-basket-bar'))hideSuggestions();});
 document.querySelectorAll('.fpill').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.fpill').forEach(b=>b.classList.remove('active'));btn.classList.add('active');activeType=btn.dataset.type;renderGrid();}));
 
+// Rarity tier order (lower = more common, sorted first) + symbol
+const RARITY_TIERS = [
+  {match:/^common$/i, tier:1, sym:'●'},
+  {match:/^uncommon$/i, tier:2, sym:'◆'},
+  {match:/^rare$/i, tier:3, sym:'★'},
+  {match:/rare holo$/i, tier:4, sym:'★'},
+  {match:/(reverse|holo)/i, tier:5, sym:'✦'},
+  {match:/(double rare|rare holo v\b)/i, tier:6, sym:'★★'},
+  {match:/(illustration rare|art rare)/i, tier:7, sym:'✎'},
+  {match:/(ultra|rare ultra|vmax|vstar|rare holo gx|ex$)/i, tier:8, sym:'✧'},
+  {match:/(special illustration|special art)/i, tier:9, sym:'✦✦'},
+  {match:/(secret|rainbow|hyper|gold)/i, tier:10, sym:'✸'},
+];
+function getRarityMeta(r){
+  const s = (r||'').toLowerCase();
+  for(const t of RARITY_TIERS){ if(t.match.test(s)) return t; }
+  return {tier:5, sym:'◈'}; // unknown → middle tier, generic symbol
+}
+
 function setCollectionRarity(r){
   activeRarity = r;
   document.querySelectorAll('#collection-rarity-row .fpill').forEach(b=>b.classList.toggle('active', b.dataset.colRarity===r));
@@ -3505,11 +3536,42 @@ function setCollectionRarity(r){
 }
 
 function updateCollectionRarityPills(){
-  const rarities = [...new Set(collection.map(c=>c.rarity).filter(Boolean))].sort();
   const row = document.getElementById('collection-rarity-row');
   if(!row) return;
-  row.innerHTML = '<span class="filter-label">Rarity</span><button class="fpill'+(activeRarity===''?' active':'')+'\" data-col-rarity="" onclick="setCollectionRarity(\'\')">All</button>' +
-    rarities.map(r=>`<button class="fpill${activeRarity===r?' active':''}" data-col-rarity="${r}" onclick="setCollectionRarity('${r.replace(/'/g,"\\'")}')\">${r.replace(/\s*\([^)]+\)/,'').trim()}</button>`).join('');
+  // Count cards per rarity
+  const counts = {};
+  collection.forEach(c => { if(c.rarity) counts[c.rarity] = (counts[c.rarity]||0) + 1; });
+  // Sort by tier, then by count descending within tier
+  const rarities = Object.keys(counts).sort((a,b) => {
+    const ta = getRarityMeta(a).tier, tb = getRarityMeta(b).tier;
+    if(ta !== tb) return ta - tb;
+    return counts[b] - counts[a];
+  });
+
+  const esc = r => r.replace(/'/g,"\\'");
+  const cleanLabel = r => r.replace(/\s*\([^)]+\)/,'').trim();
+
+  row.innerHTML =
+    `<button class="fpill${activeRarity===''?' active':''}" data-col-rarity="" onclick="setCollectionRarity('')">All</button>` +
+    rarities.map(r => {
+      const meta = getRarityMeta(r);
+      return `<button class="fpill${activeRarity===r?' active':''}" data-col-rarity="${r}" onclick="setCollectionRarity('${esc(r)}')"><span class="rar-sym">${meta.sym}</span>${cleanLabel(r)} <span style="opacity:.55">${counts[r]}</span></button>`;
+    }).join('');
+
+  // Detect horizontal overflow to show/hide edge fade
+  const wrap = row.closest('.rarity-scroll-wrap');
+  if(wrap){
+    requestAnimationFrame(() => {
+      wrap.classList.toggle('has-overflow', row.scrollWidth > row.clientWidth + 4);
+    });
+    if(!row._fadeListenerAdded){
+      row.addEventListener('scroll', () => {
+        const atEnd = row.scrollLeft + row.clientWidth >= row.scrollWidth - 4;
+        wrap.classList.toggle('has-overflow', !atEnd && row.scrollWidth > row.clientWidth + 4);
+      });
+      row._fadeListenerAdded = true;
+    }
+  }
 }
 document.getElementById('sort-select').addEventListener('change',e=>{activeSort=e.target.value;renderGrid();});
 
