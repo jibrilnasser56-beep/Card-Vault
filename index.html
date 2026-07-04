@@ -2884,6 +2884,7 @@ function getPrice(c){
   let base=0;
   if(cm?.averageSellPrice) base=cm.averageSellPrice;
   else {const t=c.tcgplayer?.prices;if(t){const k=Object.keys(t)[0];if(t[k]?.market)base=t[k].market*.79;else if(t[k]?.mid)base=t[k].mid*.79;}}
+  if(!base && c._pcPrice) base=c._pcPrice; // PriceCharting-enriched JA/CN/new-EN price
   if(!base && c.price) base=c.price; // community/vault cards store price directly
   return base * getConditionMultiplier(c);
 }
@@ -5757,18 +5758,19 @@ async function enrichTcgcGridPrices(){
         while((match = rowRegex.exec(html)) !== null){
           hasRows = true;
           const row = match[1];
-          const numM = row.match(/#(\d+)/);
+          // Extract number from the title href slug (e.g. /reshiram-gx-8" → 8) — reliable
+          const hrefM = row.match(/class="title"[\s\S]*?href="[^"]*?-(\d+)"/);
           const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
-          if(!numM || !priceM) continue;
-          const num = numM[1].replace(/^0+/,'');
+          if(!hrefM || !priceM) continue;
+          const num = hrefM[1].replace(/^0+/,'') || '0';
           const priceUSD = parseFloat(priceM[1].replace(',',''));
-          // Keep highest price for each number (most valuable variant)
-          if(priceUSD > 0 && (!priceMap[num] || priceUSD > priceMap[num] * 1.27)){
+          // First price wins per number — do NOT prefer highest (that leaks wrong prices)
+          if(priceUSD > 0 && !priceMap[num]){
             priceMap[num] = Math.round(priceUSD * 0.79 * 100) / 100;
           }
         }
         if(!hasRows) break;
-        await new Promise(r => setTimeout(r, 1100)); // respect rate limit between pages
+        await new Promise(r => setTimeout(r, 1100));
       } catch(e){ break; }
     }
 
@@ -5818,6 +5820,10 @@ function openTcgcViewer(cardIndex){
   if(!c) return;
   const setInfo = getJaSetInfo(window._tcgcSetId || '');
   const rarityShort = c.rarity.replace(/\s*\([^)]+\)/,'').trim();
+  // Prefer PriceCharting-enriched price (matches the grid), fall back to TCGcollector
+  let priceGBP = null;
+  if(c._pcPrice) priceGBP = c._pcPrice;
+  else if(c.price && c.price !== '-') priceGBP = parseFloat(c.price.replace('$','').replace(',','')) * 0.79;
   const card = {
     id: 'tcgc-'+c.tcgcId,
     name: c.name,
@@ -5825,7 +5831,8 @@ function openTcgcViewer(cardIndex){
     rarity: rarityShort || c.rarity,
     images: { small: c.image, large: c.image },
     set: { name: setInfo?.name || window._tcgcSetId || '', id: window._tcgcSetId || '' },
-    tcgplayer: c.price && c.price !== '-' ? { prices: { holofoil: { market: parseFloat(c.price.replace('$','').replace(',','')) * 0.79 } } } : null,
+    tcgplayer: priceGBP ? { prices: { holofoil: { market: priceGBP / 0.79 } } } : null,
+    _pcPrice: c._pcPrice || undefined,
     _tcgcIndex: cardIndex,
     _source: 'tcgc',
   };
@@ -5961,12 +5968,12 @@ async function fetchSetPagePrices(slug, lang){
     const rows = [...html.matchAll(/<tr[^>]*id="product-\d+"[^>]*>([\s\S]*?)<\/tr>/g)];
     const map = {};
     for(const [, row] of rows){
-      const numM = row.match(/#(\d+)/);
+      const numM = row.match(/class="title"[\s\S]*?href="[^"]*?-(\d+)"/) || row.match(/#(\d+)/);
       const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
       if(numM && priceM){
-        const num = numM[1].replace(/^0+/,''); // strip leading zeros
+        const num = numM[1].replace(/^0+/,'') || '0'; // strip leading zeros
         const price = parseFloat(priceM[1].replace(',',''));
-        if(price > 0 && !map[num]) map[num] = price; // keep first (highest sorted) price per number
+        if(price > 0 && !map[num]) map[num] = price; // first match per number
       }
     }
     _pcSetPageCache[slug] = map;
