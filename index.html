@@ -3398,22 +3398,49 @@ async function fetchSuggestions(raw){
   let apiQ=`name:"${name}*"`;if(number)apiQ+=` number:${number}`;
   try{
     const res=await fetch(`${API}/cards?q=${encodeURIComponent(apiQ)}&pageSize=250&orderBy=-cardmarket.prices.averageSellPrice`,{signal:searchAbort.signal});
-    const data=await res.json();currentSuggestions=data.data||[];const total=data.totalCount||0;
+    const data=await res.json();
+    const enCards=data.data||[];const total=data.totalCount||0;
+
+    // Also search JA and CN indexes (built as sets are browsed / prewarmed)
+    const ql = q.toLowerCase();
+    const jaMatches = Object.values(_jaCardIndex||{}).flat().filter(c => c.name && c.name.toLowerCase().includes(ql)).slice(0, 30);
+    const cnMatches = Object.values(_cnCardIndex||{}).flat().filter(c => c.name && c.name.toLowerCase().includes(ql)).slice(0, 30);
+
+    // Convert JA/CN index entries into suggestion-shaped card objects
+    const mapTcgc = (c, lang) => ({
+      id: 'tcgc-'+c.tcgcId,
+      name: c.name,
+      number: c.number,
+      rarity: c.rarity,
+      images: { small: c.image, large: c.image },
+      set: { name: (lang==='ja'?'Japanese':'Chinese'), id: c.setId||'' },
+      _source: 'tcgc',
+      _lang: lang,
+      _pcPrice: c._pcPrice,
+    });
+    const jaSug = jaMatches.map(c => mapTcgc(c,'ja'));
+    const cnSug = cnMatches.map(c => mapTcgc(c,'cn'));
+
+    currentSuggestions = [...enCards, ...jaSug, ...cnSug];
     if(!currentSuggestions.length){hideSuggestions();return;}
     const sb=document.getElementById('suggestions');
-    const hdr=number?`${currentSuggestions.length} result${currentSuggestions.length!==1?'s':''} for "${name}" #${number}`:`${total} cards — showing ${Math.min(total,250)}`;
+    const extra = (jaSug.length||cnSug.length) ? ` · ${jaSug.length} JA · ${cnSug.length} CN` : '';
+    const hdr=number?`${enCards.length} result${enCards.length!==1?'s':''} for "${name}" #${number}`:`${total} EN${extra} — showing ${currentSuggestions.length}`;
     sb.innerHTML=`<div class="sug-header">${hdr}</div>`+currentSuggestions.map((c,i)=>{
   const copies = countCopies(c.id);
   const queued = _addQueue.get(c.id);
   const inBinder = isCardInAnyBinder(c.id);
   const binderNames = inBinder ? binders.filter(b=>(b.slots||[]).some(s=>s?.cardId===c.id)).map(b=>b.name).join(', ') : '';
+  const langBadge = c._lang === 'ja' ? '<span style="font-size:9px;padding:1px 5px;border-radius:999px;background:rgba(220,80,80,.15);color:#e88;border:0.5px solid rgba(220,80,80,.35);white-space:nowrap">JA</span>'
+    : c._lang === 'cn' ? '<span style="font-size:9px;padding:1px 5px;border-radius:999px;background:rgba(220,180,60,.15);color:#e8c860;border:0.5px solid rgba(220,180,60,.35);white-space:nowrap">CN</span>' : '';
   const badges = [
+    langBadge,
     copies > 0 ? `<span style="font-size:9px;padding:1px 5px;border-radius:999px;background:rgba(61,184,124,.15);color:#3db87c;border:0.5px solid rgba(61,184,124,.35);white-space:nowrap">${copies} in vault</span>` : '',
     inBinder ? `<span style="font-size:9px;padding:1px 5px;border-radius:999px;background:rgba(139,104,212,.15);color:#c4b0ef;border:0.5px solid rgba(139,104,212,.35);white-space:nowrap" title="${binderNames}">In binder${binderNames ? ': '+binderNames : ''}</span>` : '',
   ].filter(Boolean).join(' ');
   const qBadge = queued ? `<span class="sug-queue-badge">×${queued.qty}</span>` : '';
   return`<div class="suggestion-item${queued?' sug-queued':''}" data-idx="${i}"><img class="sug-img" src="${c.images?.small||''}" alt="${c.name}" loading="lazy"><div style="min-width:0;flex:1"><div class="sug-name">${c.name}</div><div class="sug-meta"><span class="sug-num">#${c.number||'?'}</span>${c.set?.name||''}</div>${badges?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">${badges}</div>`:''}</div>${qBadge}<span class="sug-price">${getPrice(c)?'£'+getPrice(c).toFixed(2):'—'}</span></div>`;
-}).join('')+(total>250?'<div class="sug-count">Showing 250 of '+total+' — add a number to narrow down</div>':'');
+}).join('')+(total>250?'<div class="sug-count">Showing top EN + JA/CN matches — add a number to narrow down</div>':'');
     sb.querySelectorAll('.suggestion-item').forEach(el=>el.addEventListener('mousedown',e=>{e.preventDefault();queueSuggestion(parseInt(el.dataset.idx,10));}));
     sb.classList.add('show');
   }catch(e){if(e.name!=='AbortError')hideSuggestions();}
