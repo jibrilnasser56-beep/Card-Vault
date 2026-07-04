@@ -5639,9 +5639,12 @@ async function enrichEnSetPrices(setId, cards){
 
   const set = _allSets.find(s => s.id === setId);
   const setName = set?.name || setId;
+  // Build the PriceCharting EN set slug from the set name (e.g. "Chaos Rising" → pokemon-chaos-rising)
+  const setSlugFull = 'pokemon-' + setName.toLowerCase()
+    .replace(/&/g,'and').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
   const priceMap = {}; // number -> priceGBP
 
-  // Phase 1: two bulk set searches — covers popular/expensive cards fast
+  // Phase 1: two bulk set searches, only accept rows from THIS set
   for(const page of [1, 2]){
     if(_enrichingEnSet !== setId) break;
     try {
@@ -5655,7 +5658,10 @@ async function enrichEnSetPrices(setId, cards){
       while((match = rowRegex.exec(html)) !== null){
         hasRows = true;
         const row = match[1];
-        const numM = row.match(/-(\d+)"/);  // extract from href like /kakuna-2"
+        const hrefM = row.match(/class="title"[\s\S]*?\/game\/([^\/]+)\/([^"]+)"/);
+        if(!hrefM) continue;
+        if(hrefM[1] !== setSlugFull) continue; // reject cards from other sets
+        const numM = hrefM[2].match(/-(\d+)$/);
         const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
         if(!numM || !priceM) continue;
         const num = numM[1].replace(/^0+/,'') || '0';
@@ -5668,36 +5674,34 @@ async function enrichEnSetPrices(setId, cards){
     } catch(e){ break; }
   }
 
-  // Apply phase 1 prices
   cards.forEach(c => {
     if(getPrice(c) > 0 || c._pcPrice) return;
     const num = (c.number||'').replace(/^0+/,'');
     if(priceMap[num]) c._pcPrice = priceMap[num];
   });
 
-  // Phase 2: search every remaining card individually by name + number
+  // Phase 2: individually search remaining cards, still verifying set slug
   const stillMissing = cards.filter(c => !getPrice(c) && !c._pcPrice && c.number);
   for(const c of stillMissing){
     if(_enrichingEnSet !== setId) break;
     try {
       const cleanName = c.name.replace(/\s*(ex|EX|GX|V|VMAX|VSTAR)\s*$/, '').trim();
-      const q = encodeURIComponent(`${cleanName} #${c.number} ${setName} pokemon`);
+      const q = encodeURIComponent(`${cleanName} ${setName} pokemon`);
       const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices`;
       const res = await fetch(TCGC_PROXY + '?url=' + encodeURIComponent(url));
       if(res.ok){
         const html = await res.text();
-        // Find first row with a matching number in the href
         const rowRegex = /<tr[^>]*id="product-\d+"[^>]*>([\s\S]*?)<\/tr>/g;
         let match;
+        const cardNum = c.number.replace(/^0+/,'');
         while((match = rowRegex.exec(html)) !== null){
           const row = match[1];
-          // Extract number from href pattern like /card-name-3" → 3
-          const hrefNumM = row.match(/\/[a-z0-9-]+-(\d+)"/);
+          const hrefM = row.match(/class="title"[\s\S]*?\/game\/([^\/]+)\/([^"]+)"/);
+          if(!hrefM || hrefM[1] !== setSlugFull) continue; // must be same set
+          const numM = hrefM[2].match(/-(\d+)$/);
+          if(!numM || numM[1].replace(/^0+/,'') !== cardNum) continue; // must be same number
           const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
-          if(!hrefNumM || !priceM) continue;
-          const rowNum = hrefNumM[1].replace(/^0+/,'');
-          const cardNum = c.number.replace(/^0+/,'');
-          if(rowNum !== cardNum) continue;
+          if(!priceM) continue;
           const priceUSD = parseFloat(priceM[1].replace(',',''));
           if(priceUSD > 0){
             c._pcPrice = Math.round(priceUSD * 0.79 * 100) / 100;
@@ -5744,6 +5748,7 @@ async function enrichTcgcGridPrices(){
   } else {
     // JA: fetch all prices in 1-2 bulk requests using set name search
     const setName = slug.replace(/-/g,' ');
+    const setSlugFull = 'pokemon-japanese-' + slug; // e.g. pokemon-japanese-remix-bout
     const priceMap = {}; // number -> priceGBP
 
     for(const page of [1, 2]){
@@ -5758,13 +5763,19 @@ async function enrichTcgcGridPrices(){
         while((match = rowRegex.exec(html)) !== null){
           hasRows = true;
           const row = match[1];
-          // Extract number from the title href slug (e.g. /reshiram-gx-8" → 8) — reliable
-          const hrefM = row.match(/class="title"[\s\S]*?href="[^"]*?-(\d+)"/);
+          // Extract the full game href and verify it's from THIS set
+          const hrefM = row.match(/class="title"[\s\S]*?href="[^"]*\/game\/([^\/]+)\/([^"]+)"/);
+          if(!hrefM) continue;
+          const rowSetSlug = hrefM[1];
+          if(rowSetSlug !== setSlugFull) continue; // skip cards from other sets
+          // Number is the trailing digits of the card slug
+          const cardSlug = hrefM[2];
+          const numM = cardSlug.match(/-(\d+)$/);
+          if(!numM) continue;
           const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
-          if(!hrefM || !priceM) continue;
-          const num = hrefM[1].replace(/^0+/,'') || '0';
+          if(!priceM) continue;
+          const num = numM[1].replace(/^0+/,'') || '0';
           const priceUSD = parseFloat(priceM[1].replace(',',''));
-          // First price wins per number — do NOT prefer highest (that leaks wrong prices)
           if(priceUSD > 0 && !priceMap[num]){
             priceMap[num] = Math.round(priceUSD * 0.79 * 100) / 100;
           }
@@ -6003,28 +6014,27 @@ async function fetchPriceCharting(cardName, cardNumber, lang='japanese', setId='
             priceUSD = setMap[cleanNum] || null;
           }
         } else {
-          // JA: set pages are Cloudflare-blocked, use search with set name
+          // JA: set pages blocked, use search but verify set slug + number via href
           const setName = slug.replace(/-/g,' ');
+          const setSlugFull = 'pokemon-japanese-' + slug;
+          const cardNum = cardNumber.replace(/^0+/,'').split('/')[0].replace(/^0+/,'');
           const q = encodeURIComponent(`${cardName} ${setName} japanese pokemon`);
           const url = `https://www.pricecharting.com/search-products?q=${q}&type=prices`;
           const res = await fetch(TCGC_PROXY + '?url=' + encodeURIComponent(url));
           if(res.ok){
             const html = await res.text();
             const rowRegex = /<tr[^>]*id="product-\d+"[^>]*>([\s\S]*?)<\/tr>/g;
-            let match, bestScore = -1;
+            let match;
             while((match = rowRegex.exec(html)) !== null){
               const row = match[1];
-              const nameM = row.match(/class="title"[\s\S]*?<a[^>]*>\s*([^<]+?)\s*<\/a>/);
-              if(!nameM) continue;
-              const rowName = nameM[1].trim().toLowerCase();
-              const target = cardName.toLowerCase().replace(/\s*(ex|EX|GX|V|VMAX|VSTAR|e)\s*$/, '').trim();
-              if(!rowName.includes(target.split(' ')[0])) continue;
-              let score = rowName.includes(target) ? 2 : 1;
-              if(row.includes(`#${cardNumber}`)) score += 3;
+              const hrefM = row.match(/class="title"[\s\S]*?\/game\/([^\/]+)\/([^"]+)"/);
+              if(!hrefM || hrefM[1] !== setSlugFull) continue; // same set only
+              const numM = hrefM[2].match(/-(\d+)$/);
+              if(!numM || numM[1].replace(/^0+/,'') !== cardNum) continue; // same number only
               const priceM = row.match(/\$\s*([\d,]+\.?\d*)/);
               if(!priceM) continue;
               const p = parseFloat(priceM[1].replace(',',''));
-              if(p > 0 && score > bestScore){ bestScore = score; priceUSD = p; }
+              if(p > 0){ priceUSD = p; break; }
             }
           }
         }
