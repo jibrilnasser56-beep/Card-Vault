@@ -170,15 +170,21 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .page-info{font-size:12px;color:var(--muted);white-space:nowrap;align-self:center;}
 .filter-row{display:flex;gap:8px;margin-bottom:1.25rem;flex-wrap:wrap;align-items:center;}
 .filter-label{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-right:4px;}
-.fpill{font-size:11px;padding:4px 12px;border-radius:999px;border:0.5px solid var(--border2);color:var(--muted);background:transparent;cursor:pointer;font-family:var(--font);transition:all .15s;letter-spacing:.04em;}
-.rarity-scroll-wrap{position:relative;flex:1;min-width:0;}
-.rarity-scroll-wrap::after{content:'';position:absolute;top:0;right:0;bottom:0;width:32px;background:linear-gradient(to right,transparent,var(--bg));pointer-events:none;opacity:0;transition:opacity .2s;}
-.rarity-scroll-wrap.has-overflow::after{opacity:1;}
-.rarity-scroll{display:flex;gap:5px;align-items:center;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;padding-bottom:2px;scroll-behavior:smooth;}
-.rarity-scroll::-webkit-scrollbar{display:none;}
-.rarity-scroll .fpill{flex-shrink:0;white-space:nowrap;}
-.fpill .rar-sym{margin-right:4px;opacity:.75;}
-.fpill.active .rar-sym{opacity:1;}
+.fpill{font-size:11px;padding:5px 13px;border-radius:999px;border:0.5px solid var(--border2);color:var(--muted);background:transparent;cursor:pointer;font-family:var(--font);transition:all .15s;letter-spacing:.03em;white-space:nowrap;flex-shrink:0;}
+/* Unified filter layout */
+.filter-line{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.filter-line:last-child{margin-bottom:0;}
+.filter-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);opacity:.6;width:48px;flex-shrink:0;text-align:right;}
+.pill-scroll-wrap{position:relative;flex:1;min-width:0;}
+.pill-scroll-wrap::after{content:'';position:absolute;top:0;right:0;bottom:0;width:36px;background:linear-gradient(to right,transparent,var(--bg));pointer-events:none;opacity:0;transition:opacity .2s;}
+.pill-scroll-wrap.has-overflow::after{opacity:1;}
+.pill-scroll{display:flex;gap:6px;align-items:center;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;padding:1px;}
+.pill-scroll::-webkit-scrollbar{display:none;}
+.fpill .rar-ct{margin-left:5px;opacity:.5;font-variant-numeric:tabular-nums;}
+.filter-controls{gap:8px;padding-left:58px;}
+.filter-controls .sort-select{margin-left:0;}
+.edit-price-btn{padding:5px 13px;border-radius:6px;border:0.5px solid rgba(61,184,124,.4);background:rgba(61,184,124,.12);color:#3db87c;font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;margin-left:auto;transition:all .15s;}
+.edit-price-btn:hover{background:rgba(61,184,124,.2);}
 .fpill:hover{border-color:var(--accent);color:var(--text);}
 .fpill.active{background:rgba(139,104,212,.18);border-color:var(--accent);color:#c4b0ef;}
 .sort-select{background:var(--surface);border:0.5px solid var(--border2);border-radius:6px;color:var(--muted);font-family:var(--font);font-size:11px;padding:4px 10px;outline:none;cursor:pointer;margin-left:auto;}
@@ -1819,33 +1825,46 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     </div>
   </div>
 
-  <div id="filter-row" style="display:none;margin-bottom:1.25rem;">
-    <!-- Row 1: type pills -->
-    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;">
+  <div id="filter-row" style="display:none;margin-bottom:1.5rem;">
+    <!-- Row 1: type pills (horizontal, scrollable) -->
+    <div class="filter-line">
       <span class="filter-label">Type</span>
-      <button class="fpill active" data-type="all">All</button>
-      <button class="fpill" data-type="fire">Fire</button>
-      <button class="fpill" data-type="water">Water</button>
-      <button class="fpill" data-type="grass">Grass</button>
-      <button class="fpill" data-type="psychic">Psychic</button>
-      <button class="fpill" data-type="lightning">Lightning</button>
-      <button class="fpill" data-type="fighting">Fighting</button>
-      <button class="fpill" data-type="darkness">Darkness</button>
-      <button class="fpill" data-type="metal">Metal</button>
-      <button class="fpill" data-type="fairy">Fairy</button>
-      <button class="fpill" data-type="dragon">Dragon</button>
-      <button class="fpill" data-type="colorless">Colorless</button>
-      <button class="fpill" data-type="trainer">Trainer</button>
-      <button class="fpill" data-type="energy">Energy</button>
+      <div class="pill-scroll-wrap">
+        <div class="pill-scroll" id="type-pill-row">
+          <button class="fpill active" data-type="all">All</button>
+          <button class="fpill" data-type="fire">Fire</button>
+          <button class="fpill" data-type="water">Water</button>
+          <button class="fpill" data-type="grass">Grass</button>
+          <button class="fpill" data-type="psychic">Psychic</button>
+          <button class="fpill" data-type="lightning">Lightning</button>
+          <button class="fpill" data-type="fighting">Fighting</button>
+          <button class="fpill" data-type="darkness">Darkness</button>
+          <button class="fpill" data-type="metal">Metal</button>
+          <button class="fpill" data-type="fairy">Fairy</button>
+          <button class="fpill" data-type="dragon">Dragon</button>
+          <button class="fpill" data-type="colorless">Colorless</button>
+          <button class="fpill" data-type="trainer">Trainer</button>
+          <button class="fpill" data-type="energy">Energy</button>
+        </div>
+      </div>
     </div>
-    <!-- Row 2: secondary filters + actions -->
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <select class="sort-select" id="dup-filter" onchange="renderGrid()" style="max-width:140px">
+    <!-- Row 2: rarity pills (horizontal, scrollable) -->
+    <div class="filter-line">
+      <span class="filter-label">Rarity</span>
+      <div class="pill-scroll-wrap">
+        <div id="collection-rarity-row" class="pill-scroll">
+          <button class="fpill active" data-col-rarity="" onclick="setCollectionRarity('')">All</button>
+        </div>
+      </div>
+    </div>
+    <!-- Row 3: dropdowns + action, right-aligned -->
+    <div class="filter-line filter-controls">
+      <select class="sort-select" id="dup-filter" onchange="renderGrid()">
         <option value="">All cards</option>
         <option value="dupes">Duplicates only</option>
         <option value="unique">Unique only</option>
       </select>
-      <select class="sort-select" id="cond-filter" onchange="renderGrid()" style="max-width:160px">
+      <select class="sort-select" id="cond-filter" onchange="renderGrid()">
         <option value="">All conditions</option>
         <option value="Mint">Mint</option>
         <option value="Near Mint">Near Mint</option>
@@ -1860,16 +1879,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
         <option value="value-asc">Value: low → high</option>
         <option value="name">Name A–Z</option>
       </select>
-      <button id="batch-price-btn" onclick="toggleBatchPriceMode()" style="padding:4px 12px;border-radius:6px;border:0.5px solid #3db87c;background:rgba(61,184,124,.15);color:#3db87c;font-family:var(--font);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;margin-left:auto;">✎ Edit prices</button>
-    </div>
-    <!-- Row 3: rarity filter (scrollable single row) -->
-    <div style="display:flex;align-items:center;gap:8px;">
-      <span class="filter-label" style="flex-shrink:0;">Rarity</span>
-      <div class="rarity-scroll-wrap">
-        <div id="collection-rarity-row" class="rarity-scroll">
-          <button class="fpill active" data-col-rarity="" onclick="setCollectionRarity('')">All</button>
-        </div>
-      </div>
+      <button id="batch-price-btn" onclick="toggleBatchPriceMode()" class="edit-price-btn">✎ Edit prices</button>
     </div>
   </div>
   <div id="cview-cards-panel">
@@ -3314,7 +3324,7 @@ function updateStats(){
   const tot=collection.reduce((s,c)=>s+(c.price||0),0);
   animateCounter(document.getElementById('stat-value'), parseFloat(tot.toFixed(2)), '£');
   animateCounter(document.getElementById('stat-count'), collection.length);
-  if(collection.length>0){document.getElementById('value-strip').style.display='flex';document.getElementById('filter-row').style.display='flex';}
+  if(collection.length>0){document.getElementById('value-strip').style.display='flex';document.getElementById('filter-row').style.display='block';detectPillOverflow();}
   animateCounter(document.getElementById('vs-val'), parseFloat(tot.toFixed(2)), '£');
   document.getElementById('vs-count').textContent=collection.length+' card'+(collection.length!==1?'s':'');
   document.getElementById('vs-fill').style.width=Math.min(100,(tot/Math.max(tot*1.3,100))*100)+'%';
@@ -3556,6 +3566,23 @@ function getRarityMeta(r){
   return {tier:5, sym:'◈'}; // unknown → middle tier, generic symbol
 }
 
+function detectPillOverflow(){
+  const typeRow = document.getElementById('type-pill-row');
+  const wrap = typeRow?.closest('.pill-scroll-wrap');
+  if(typeRow && wrap){
+    requestAnimationFrame(() => {
+      wrap.classList.toggle('has-overflow', typeRow.scrollWidth > typeRow.clientWidth + 4);
+    });
+    if(!typeRow._fadeListenerAdded){
+      typeRow.addEventListener('scroll', () => {
+        const atEnd = typeRow.scrollLeft + typeRow.clientWidth >= typeRow.scrollWidth - 4;
+        wrap.classList.toggle('has-overflow', !atEnd && typeRow.scrollWidth > typeRow.clientWidth + 4);
+      });
+      typeRow._fadeListenerAdded = true;
+    }
+  }
+}
+
 function setCollectionRarity(r){
   activeRarity = r;
   document.querySelectorAll('#collection-rarity-row .fpill').forEach(b=>b.classList.toggle('active', b.dataset.colRarity===r));
@@ -3565,10 +3592,8 @@ function setCollectionRarity(r){
 function updateCollectionRarityPills(){
   const row = document.getElementById('collection-rarity-row');
   if(!row) return;
-  // Count cards per rarity
   const counts = {};
   collection.forEach(c => { if(c.rarity) counts[c.rarity] = (counts[c.rarity]||0) + 1; });
-  // Sort by tier, then by count descending within tier
   const rarities = Object.keys(counts).sort((a,b) => {
     const ta = getRarityMeta(a).tier, tb = getRarityMeta(b).tier;
     if(ta !== tb) return ta - tb;
@@ -3580,13 +3605,12 @@ function updateCollectionRarityPills(){
 
   row.innerHTML =
     `<button class="fpill${activeRarity===''?' active':''}" data-col-rarity="" onclick="setCollectionRarity('')">All</button>` +
-    rarities.map(r => {
-      const meta = getRarityMeta(r);
-      return `<button class="fpill${activeRarity===r?' active':''}" data-col-rarity="${r}" onclick="setCollectionRarity('${esc(r)}')"><span class="rar-sym">${meta.sym}</span>${cleanLabel(r)} <span style="opacity:.55">${counts[r]}</span></button>`;
-    }).join('');
+    rarities.map(r =>
+      `<button class="fpill${activeRarity===r?' active':''}" data-col-rarity="${r}" onclick="setCollectionRarity('${esc(r)}')">${cleanLabel(r)}<span class="rar-ct">${counts[r]}</span></button>`
+    ).join('');
 
-  // Detect horizontal overflow to show/hide edge fade
-  const wrap = row.closest('.rarity-scroll-wrap');
+  // Overflow fade detection
+  const wrap = row.closest('.pill-scroll-wrap');
   if(wrap){
     requestAnimationFrame(() => {
       wrap.classList.toggle('has-overflow', row.scrollWidth > row.clientWidth + 4);
