@@ -5611,7 +5611,14 @@ function renderTcgcGrid(rarity=''){
     const inVault = collection.some(x => x.id === 'tcgc-'+c.tcgcId);
     const rarityShort = c.rarity.replace(/\s*\([^)]+\)/,'').trim();
     // Show PriceCharting price if available, fall back to TCGcollector price
-    const displayPrice = c._pcPrice ? `£${c._pcPrice.toFixed(2)}` : (c.price && c.price !== '-' ? c.price : '');
+    // Show PriceCharting price if available; else convert TCGcollector USD price to GBP
+    let displayPrice = '';
+    if(c._pcPrice){
+      displayPrice = `£${c._pcPrice.toFixed(2)}`;
+    } else if(c.price && c.price !== '-'){
+      const usd = parseFloat(String(c.price).replace(/[$,]/g,''));
+      if(!isNaN(usd) && usd > 0) displayPrice = `£${(usd * 0.79).toFixed(2)}`;
+    }
     return `<div class="pcard${inVault?' pcard-owned':''}" data-tcgc-id="${c.tcgcId}" onmousemove="holoMove(event,this)" onmouseleave="holoReset(this)">
       <div class="pcard-inner" onclick="tcgcCardClick(event,${i})">
         <img class="pcard-img" src="${c.image}" alt="${c.name}" loading="lazy" onerror="this.style.opacity='0.3'">
