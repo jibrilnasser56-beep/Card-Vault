@@ -155,7 +155,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 }
 .pcard-colour-overlay{
   position:absolute;inset:0;width:100%;height:100%;
-  object-fit:contain;object-position:center;
+  object-fit:cover;object-position:center;
   animation:colour-fill .7s cubic-bezier(.25,0,.1,1) forwards;
   pointer-events:none;
 }
@@ -238,7 +238,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   75% {filter:drop-shadow(0 0 8px rgba(52,211,153,.7))  drop-shadow(0 0 16px rgba(52,211,153,.3));}
   100%{filter:drop-shadow(0 0 8px rgba(255,110,199,.7)) drop-shadow(0 0 16px rgba(255,110,199,.3));}
 }
-.pcard-img{width:100%;height:100%;object-fit:contain;object-position:center center;display:block;background:transparent;}
+.pcard-img{width:100%;height:100%;object-fit:cover;object-position:center center;display:block;background:transparent;}
 .holo-rainbow,.holo-shimmer,.holo-glare{position:absolute;inset:0;border-radius:12px;pointer-events:none;opacity:0;transition:opacity .18s;}
 .holo-rainbow{mix-blend-mode:screen;}.holo-shimmer{mix-blend-mode:overlay;}.holo-glare{mix-blend-mode:overlay;}
 /* holo off by default — toggled via holoMove JS only */
